@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Env & secrets -- JANGAN pernah ke-commit, isinya Client Secret, JWT secret, dst.
+.env
+.env.local
+
+# Build output
+web/dist/
+
+# Data & runtime -- database SQLite, kunci auth sesi WA tiap REE (sensitif!),
+# dan file Excel data retailer (data internal perusahaan). Ditransfer ke VPS
+# terpisah dari git, bukan lewat repo.
+server/data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
