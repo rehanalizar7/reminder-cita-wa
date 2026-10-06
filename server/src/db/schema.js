@@ -39,11 +39,19 @@ const ree = sqliteTable('ree', {
   // bakal ngarahin mereka ke halaman pilih TSUB dulu sebelum ke Dashboard).
   tsubId: text('tsub_id'),
 
+  // Auth & akun management
+  role: text('role').notNull().default('ree'), // 'ree' | 'admin'
+  username: text('username'), // unique (lihat index), nullable buat user Google-only lama
+  passwordHash: text('password_hash'),
+  mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => ([
   uniqueIndex('ree_email_unique').on(t.email),
   uniqueIndex('ree_google_id_unique').on(t.googleId),
+  uniqueIndex('ree_username_unique').on(t.username),
 ]));
 
 // TSUB (kode wilayah/territory dari data resmi Sampoerna). Satu TSUB cuma boleh

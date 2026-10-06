@@ -7,7 +7,7 @@ if (!SECRET) {
 }
 
 function signSession(ree) {
-  return jwt.sign({ sub: ree.id, email: ree.email, name: ree.name }, SECRET, {
+  return jwt.sign({ sub: ree.id, email: ree.email, name: ree.name, role: ree.role ?? 'ree' }, SECRET, {
     expiresIn: '30d',
   });
 }

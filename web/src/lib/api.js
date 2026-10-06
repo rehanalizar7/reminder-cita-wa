@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
-function getToken() {
+export function getToken() {
   try {
     return localStorage.getItem('cita_token');
   } catch {
@@ -100,4 +100,15 @@ export const api = {
   tsubAvailable: () => request('/tsub/available'),
   tsubClaim: (tsubId) => request('/tsub/claim', { method: 'POST', body: { tsubId } }),
   citaRetailerSearch: (search) => request('/tsub/retailers', { params: { search } }),
+
+  login: (username, password) => request('/auth/login', { method: 'POST', body: { username, password } }),
+  changePassword: (currentPassword, newPassword) =>
+    request('/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
+
+  adminUsers: () => request('/admin/users'),
+  adminCreateUser: (body) => request('/admin/users', { method: 'POST', body }),
+  adminResetPassword: (id, newPassword) =>
+    request(`/admin/users/${id}/reset-password`, { method: 'POST', body: { newPassword } }),
+  adminToggleActive: (id, isActive) =>
+    request(`/admin/users/${id}/active`, { method: 'PATCH', body: { isActive } }),
 };

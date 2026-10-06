@@ -1,28 +1,94 @@
-import React from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { googleLoginUrl } from '../lib/api';
+import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api, setToken, googleLoginUrl } from '../lib/api';
 
 const ERROR_MESSAGES = {
   domain_not_allowed: 'Email kamu bukan dari domain yang diizinkan.',
   oauth_failed: 'Login Google gagal. Coba lagi.',
   missing_code: 'Login Google gagal (kode tidak ditemukan). Coba lagi.',
+  account_not_found: 'Email ini belum terdaftar. Hubungi admin.',
+  account_disabled: 'Akun kamu dinonaktifkan. Hubungi admin.',
 };
 
 export default function Login() {
   const [params] = useSearchParams();
-  const error = params.get('error');
+  const navigate = useNavigate();
+  const urlError = params.get('error');
+
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setFormError('');
+    if (!username || !password) {
+      setFormError('Username dan password wajib diisi.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.login(username.trim(), password);
+      setToken(res.token);
+      if (res.mustChangePassword) {
+        navigate('/change-password', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="center-page">
-      <div className="card" style={{ maxWidth: 380, textAlign: 'center' }}>
-        <h2>Reminder CITA via WA</h2>
-        <p className="muted">
-          Login pakai akun Google kamu (yang kontaknya sinkron dari HP), buat import kontak outlet & kirim reminder
-          WhatsApp.
-        </p>
-        {error && <div className="error-box">{ERROR_MESSAGES[error] || 'Terjadi kesalahan saat login.'}</div>}
-        <a href={googleLoginUrl()}>
-          <button style={{ width: '100%', marginTop: 8 }}>Login dengan Google</button>
+      <div className="card" style={{ maxWidth: 380 }}>
+        <h2 style={{ textAlign: 'center', marginTop: 0 }}>Reminder CITA via WA</h2>
+
+        {urlError && (
+          <div className="error-box">{ERROR_MESSAGES[urlError] || 'Terjadi kesalahan saat login.'}</div>
+        )}
+
+        <form onSubmit={handleLogin}>
+          <div className="field">
+            <label>Username</label>
+            <input
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username kamu"
+            />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password kamu"
+            />
+          </div>
+          {formError && <div className="error-box" style={{ marginBottom: 10 }}>{formError}</div>}
+          <button type="submit" style={{ width: '100%' }} disabled={loading}>
+            {loading ? 'Masuk...' : 'Masuk'}
+          </button>
+        </form>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0' }}>
+          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
+          <span className="muted" style={{ fontSize: 12 }}>atau</span>
+          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
+        </div>
+
+        <a href={googleLoginUrl()} style={{ textDecoration: 'none' }}>
+          <button className="secondary" style={{ width: '100%' }}>
+            Login dengan Google
+          </button>
         </a>
       </div>
     </div>

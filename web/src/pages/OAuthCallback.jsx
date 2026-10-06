@@ -10,6 +10,8 @@ export default function OAuthCallback() {
     const token = params.get('token');
     if (token) {
       setToken(token);
+      // Hapus token dari URL supaya tidak muncul di history / log browser
+      window.history.replaceState(null, '', '/oauth-callback');
       navigate('/', { replace: true });
     } else {
       navigate('/login?error=oauth_failed', { replace: true });
