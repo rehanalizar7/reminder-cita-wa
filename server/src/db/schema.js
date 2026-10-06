@@ -176,7 +176,7 @@ const messageLog = sqliteTable('message_log', {
   reeId: text('ree_id').notNull().references(() => ree.id, { onDelete: 'cascade' }),
   outletId: text('outlet_id').notNull().references(() => outlet.id, { onDelete: 'cascade' }),
   templateId: text('template_id').references(() => messageTemplate.id),
-  scheduleJobId: text('schedule_job_id').references(() => scheduleJob.id),
+  scheduleJobId: text('schedule_job_id').references(() => scheduleJob.id, { onDelete: 'set null' }),
 
   phone: text('phone').notNull(),
   message: text('message').notNull(), // fully rendered text actually sent

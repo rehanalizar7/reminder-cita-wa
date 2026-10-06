@@ -1,6 +1,6 @@
 const express = require('express');
 const cronParser = require('cron-parser');
-const { eq, desc } = require('drizzle-orm');
+const { eq, and, desc } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { requireAuth } = require('../auth/middleware');
 const { dispatch } = require('../services/dispatch');
@@ -8,7 +8,12 @@ const { dispatch } = require('../services/dispatch');
 const router = express.Router();
 router.use(requireAuth);
 
-router.get('/', async (req, res) => {
+// Express 4 doesn't forward rejected promises from async handlers to error
+// middleware automatically — this wrapper does that so every route below gets
+// proper 500 JSON responses instead of hanging requests on unexpected errors.
+const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+
+router.get('/', wrap(async (req, res) => {
   const jobs = await db
     .select({
       id: schema.scheduleJob.id,
@@ -30,12 +35,12 @@ router.get('/', async (req, res) => {
     .where(eq(schema.scheduleJob.reeId, req.ree.id))
     .orderBy(desc(schema.scheduleJob.createdAt));
   res.json(jobs);
-});
+}));
 
 // POST /schedules
 // One-off: { templateId, targetType, groupId?, outletIds?, runAt: ISOString }
 // Recurring: { templateId, targetType, groupId?, outletIds?, cronExpression, isRecurring: true }
-router.post('/', async (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const { templateId, targetType, groupId, outletIds, runAt, cronExpression, isRecurring } = req.body || {};
 
   if (!templateId || !targetType) return res.status(400).json({ error: 'templateId dan targetType wajib diisi' });
@@ -75,9 +80,9 @@ router.post('/', async (req, res) => {
   });
 
   res.status(201).json(job);
-});
+}));
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', wrap(async (req, res) => {
   const [existing] = await db.select().from(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
   if (!existing || existing.reeId !== req.ree.id) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
   const { isActive } = req.body || {};
@@ -87,17 +92,20 @@ router.patch('/:id', async (req, res) => {
     .where(eq(schema.scheduleJob.id, req.params.id))
     .returning();
   res.json(updated);
-});
+}));
 
-router.delete('/:id', async (req, res) => {
-  const [existing] = await db.select().from(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
-  if (!existing || existing.reeId !== req.ree.id) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
-  await db.delete(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
+router.delete('/:id', wrap(async (req, res) => {
+  const [existing] = await db.select().from(schema.scheduleJob).where(
+    and(eq(schema.scheduleJob.id, req.params.id), eq(schema.scheduleJob.reeId, req.ree.id))
+  );
+  if (!existing) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
+  const deleted = await db.delete(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id)).returning();
+  if (!deleted.length) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
   res.json({ ok: true });
-});
+}));
 
 // Fire a saved schedule right now, on demand, without waiting for its cron/runAt.
-router.post('/:id/run-now', async (req, res) => {
+router.post('/:id/run-now', wrap(async (req, res) => {
   const [job] = await db.select().from(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
   if (!job || job.reeId !== req.ree.id) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
 
@@ -116,6 +124,6 @@ router.post('/:id/run-now', async (req, res) => {
   });
   await db.update(schema.scheduleJob).set({ lastRunAt: new Date() }).where(eq(schema.scheduleJob.id, job.id));
   res.json({ ok: true, ...result });
-});
+}));
 
 module.exports = router;

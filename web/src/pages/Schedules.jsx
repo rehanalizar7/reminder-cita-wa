@@ -30,8 +30,9 @@ export default function Schedules() {
   const [days, setDays] = useState(new Set([1])); // default Senin
   const [rawCron, setRawCron] = useState('');
 
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  // formError: validasi form sebelum submit, ditampilkan inline di atas tombol.
+  // Semua feedback aksi lain (sukses/gagal) pakai toast agar tidak ada duplikat.
+  const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [detailSchedule, setDetailSchedule] = useState(null);
 
@@ -49,7 +50,7 @@ export default function Schedules() {
   }
 
   useEffect(() => {
-    loadAll().catch((err) => setError(err.message));
+    loadAll().catch((err) => showToast('error', 'Gagal memuat data: ' + err.message));
   }, []);
 
   function toggleDay(d) {
@@ -69,12 +70,11 @@ export default function Schedules() {
 
   async function handleCreate(e) {
     e.preventDefault();
-    setError('');
-    setSuccess('');
-    if (!templateId) return setError('Pilih template dulu.');
-    if (targetType === 'GROUP' && !groupId) return setError('Pilih grup dulu.');
-    if (targetType === 'SELECTED' && selectedOutlets.size === 0) return setError('Pilih minimal satu outlet.');
-    if (mode === 'once' && !runAt) return setError('Tentukan tanggal & jam kirim.');
+    setFormError('');
+    if (!templateId) return setFormError('Pilih template dulu.');
+    if (targetType === 'GROUP' && !groupId) return setFormError('Pilih grup dulu.');
+    if (targetType === 'SELECTED' && selectedOutlets.size === 0) return setFormError('Pilih minimal satu outlet.');
+    if (mode === 'once' && !runAt) return setFormError('Tentukan tanggal & jam kirim.');
 
     setSaving(true);
     try {
@@ -90,11 +90,9 @@ export default function Schedules() {
       }
 
       await api.createSchedule(body);
-      setSuccess('Jadwal berhasil dibuat.');
       showToast('success', 'Jadwal berhasil dibuat.');
       await loadAll();
     } catch (err) {
-      setError(err.message);
       showToast('error', err.message);
     } finally {
       setSaving(false);
@@ -104,8 +102,8 @@ export default function Schedules() {
   async function handleToggle(s) {
     try {
       await api.toggleSchedule(s.id, !s.isActive);
-      loadAll();
       showToast('success', s.isActive ? 'Jadwal dinonaktifkan.' : 'Jadwal diaktifkan.');
+      await loadAll();
     } catch (err) {
       showToast('error', err.message);
     }
@@ -115,7 +113,8 @@ export default function Schedules() {
     if (!confirm('Hapus jadwal ini?')) return;
     try {
       await api.deleteSchedule(id);
-      loadAll();
+      // Optimistic: hapus langsung dari state tanpa tunggu refetch
+      setSchedules((prev) => prev.filter((s) => s.id !== id));
       showToast('success', 'Jadwal berhasil dihapus.');
     } catch (err) {
       showToast('error', err.message);
@@ -126,10 +125,8 @@ export default function Schedules() {
     if (!confirm('Jalankan jadwal ini sekarang juga?')) return;
     try {
       const res = await api.runScheduleNow(id);
-      const msg = `${res.queued} pesan masuk antrian kirim.`;
-      setSuccess(msg);
-      showToast('success', msg);
-      loadAll();
+      showToast('success', `${res.queued} pesan masuk antrian kirim.`);
+      await loadAll();
     } catch (err) {
       showToast('error', err.message);
     }
@@ -138,8 +135,6 @@ export default function Schedules() {
   return (
     <div>
       <h2>Jadwal Reminder</h2>
-      {error && <div className="error-box">{error}</div>}
-      {success && <div className="success-box">{success}</div>}
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Buat Jadwal Baru</h3>
@@ -244,6 +239,7 @@ export default function Schedules() {
             </div>
           )}
 
+          {formError && <div className="error-box" style={{ marginBottom: 8 }}>{formError}</div>}
           <button type="submit" disabled={saving}>
             {saving ? 'Menyimpan...' : 'Buat Jadwal'}
           </button>
