@@ -190,6 +190,20 @@ const messageLog = sqliteTable('message_log', {
   index('message_log_status_idx').on(t.status),
 ]));
 
+// Stores outgoing WA messages keyed by Baileys message ID so the socket can
+// retrieve them for retry/receipt flows without hitting WhatsApp servers again.
+// Cleaned up by a daily cron after 7 days.
+const waMessages = sqliteTable('wa_messages', {
+  waId: text('wa_id').notNull(),
+  reeId: text('ree_id').notNull().references(() => ree.id, { onDelete: 'cascade' }),
+  jid: text('jid').notNull(),
+  content: text('content').notNull(), // JSON.stringify(sent.message)
+  createdAt: createdAt(),
+}, (t) => ([
+  primaryKey({ columns: [t.waId, t.reeId] }),
+  index('wa_messages_ree_created_idx').on(t.reeId, t.createdAt),
+]));
+
 module.exports = {
   ree,
   tsub,
@@ -201,4 +215,5 @@ module.exports = {
   scheduleJob,
   scheduleJobOutlet,
   messageLog,
+  waMessages,
 };

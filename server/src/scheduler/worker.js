@@ -4,6 +4,7 @@ const { eq } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { dispatch } = require('../services/dispatch');
 const { logger } = require('../utils/logger');
+const { pruneOldWaMessages } = require('../wa/sessionManager');
 
 // Polls every minute for ScheduleJobs that are due, and dispatches them.
 // Jobs are stored in the DB and created/edited freely via the API, so instead
@@ -14,6 +15,12 @@ function startScheduler() {
   cron.schedule('* * * * *', () => {
     runDueJobs().catch((err) => logger.error({ err }, 'Scheduler tick gagal'));
   });
+
+  // Bersihkan wa_messages yang lebih dari 7 hari setiap hari jam 02:00 WIB.
+  cron.schedule('0 2 * * *', () => {
+    pruneOldWaMessages().catch((err) => logger.error({ err }, 'Pruning wa_messages gagal'));
+  }, { timezone: 'Asia/Jakarta' });
+
   logger.info('Scheduler worker jalan (cek tiap 1 menit)');
 }
 

@@ -1,7 +1,8 @@
 const path = require('path');
 const fs = require('fs');
 const QRCode = require('qrcode');
-const { eq, and, gte, sql } = require('drizzle-orm');
+const NodeCache = require('node-cache');
+const { eq, and, gte, lt, sql } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { logger } = require('../utils/logger');
 const { toWhatsAppJid } = require('../utils/phone');
@@ -17,7 +18,7 @@ const DAILY_LIMIT = Number(process.env.WA_DAILY_LIMIT ?? 120);
 
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
-// reeId -> { sock, status: 'connecting'|'qr'|'open'|'closed', qrDataUrl, queue: [], processing: bool }
+// reeId -> { sock, status: 'connecting'|'qr'|'open'|'closed', qrDataUrl, queue: [], processing: bool, msgRetryCache }
 const sessions = new Map();
 
 // @whiskeysockets/baileys ships as an ESM package — dynamic import() works
@@ -34,7 +35,14 @@ function sessionDir(reeId) {
 
 function getSessionState(reeId) {
   if (!sessions.has(reeId)) {
-    sessions.set(reeId, { sock: null, status: 'closed', qrDataUrl: null, queue: [], processing: false });
+    sessions.set(reeId, {
+      sock: null,
+      status: 'closed',
+      qrDataUrl: null,
+      queue: [],
+      processing: false,
+      msgRetryCache: new NodeCache(),
+    });
   }
   return sessions.get(reeId);
 }
@@ -68,8 +76,38 @@ async function countSentToday(reeId) {
   return Number(row?.count || 0);
 }
 
+// Fetch a stored WA message by its Baileys message ID, for the getMessage hook
+// Baileys uses to handle retries and receipts without re-downloading from WA.
+async function getStoredMessage(reeId, waId) {
+  const [row] = await db
+    .select({ content: schema.waMessages.content })
+    .from(schema.waMessages)
+    .where(and(eq(schema.waMessages.waId, waId), eq(schema.waMessages.reeId, reeId)));
+  if (!row) return undefined;
+  // _baileys is guaranteed non-null here (called only after socket is created).
+  const { BufferJSON } = _baileys;
+  try {
+    return JSON.parse(row.content, BufferJSON.reviver);
+  } catch {
+    return undefined;
+  }
+}
+
+async function storeMessage(reeId, jid, waId, messageObj) {
+  // _baileys is guaranteed non-null here (called only after socket is created).
+  const { BufferJSON } = _baileys;
+  try {
+    await db
+      .insert(schema.waMessages)
+      .values({ waId, reeId, jid, content: JSON.stringify(messageObj, BufferJSON.replacer) })
+      .onConflictDoNothing();
+  } catch (err) {
+    logger.warn({ err, reeId, waId }, 'Gagal simpan wa_message ke DB');
+  }
+}
+
 async function startSession(reeId) {
-  const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = await getBaileys();
+  const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore } = await getBaileys();
   const state = getSessionState(reeId);
 
   // Already connecting/connected — don't spin up a duplicate socket.
@@ -77,13 +115,28 @@ async function startSession(reeId) {
     return state;
   }
 
+  // Cleanly end the stale socket (if any) before creating a new one so there's
+  // never two active WS connections for the same REE at the same time. We use a
+  // local reference to identify the *current* socket in event handlers below,
+  // so stale handlers from a previous socket iteration are silently ignored.
+  if (state.sock) {
+    try { state.sock.end(); } catch (_) {}
+  }
+
   const { state: authState, saveCreds } = await useMultiFileAuthState(sessionDir(reeId));
 
+  const baileysLogger = logger.child({ module: 'baileys', reeId });
+
   const sock = makeWASocket({
-    auth: authState,
-    logger: logger.child({ module: 'baileys', reeId }),
+    auth: {
+      creds: authState.creds,
+      keys: makeCacheableSignalKeyStore(authState.keys, baileysLogger),
+    },
+    logger: baileysLogger,
     printQRInTerminal: false,
     syncFullHistory: false,
+    msgRetryCounterCache: state.msgRetryCache,
+    getMessage: async (key) => getStoredMessage(reeId, key.id),
   });
 
   state.sock = sock;
@@ -94,6 +147,9 @@ async function startSession(reeId) {
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
+    // Stale handler from a superseded socket — ignore completely.
+    if (sock !== state.sock) return;
+
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -140,6 +196,10 @@ async function startSession(reeId) {
         .set({ waConnected: false })
         .where(eq(schema.ree.id, reeId))
         .catch((err) => logger.error({ err, reeId }, 'Gagal update status WA di DB'));
+
+      // Discard the stale socket reference so startSession() knows it must create
+      // a fresh one (not just re-enter the early-return guard above).
+      state.sock = null;
 
       if (loggedOut) {
         logger.warn({ reeId }, 'REE logout dari WA — perlu scan QR ulang');
@@ -216,7 +276,11 @@ async function processQueue(reeId) {
 
     const job = s.queue.shift();
     try {
-      await s.sock.sendMessage(toWhatsAppJid(job.phone), { text: job.text });
+      const jid = toWhatsAppJid(job.phone);
+      const sent = await s.sock.sendMessage(jid, { text: job.text });
+      if (sent?.key?.id && sent?.message) {
+        await storeMessage(reeId, jid, sent.key.id, sent.message);
+      }
       await job.onSuccess?.();
     } catch (err) {
       logger.error({ err, reeId, phone: job.phone }, 'Gagal kirim pesan WA');
@@ -249,6 +313,18 @@ function startQueueResumer() {
   }, 5 * 60 * 1000); // tiap 5 menit
 }
 
+// Hapus wa_messages yang lebih lama dari 7 hari. Dipanggil sekali dari scheduler
+// tiap hari supaya tabel ini gak tumbuh tanpa batas.
+async function pruneOldWaMessages() {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  try {
+    await db.delete(schema.waMessages).where(lt(schema.waMessages.createdAt, cutoff));
+    logger.info({ cutoff }, 'wa_messages lama berhasil dibersihkan');
+  } catch (err) {
+    logger.error({ err }, 'Gagal membersihkan wa_messages lama');
+  }
+}
+
 module.exports = {
   startSession,
   restoreAllSessions,
@@ -257,5 +333,6 @@ module.exports = {
   enqueueSend,
   queueLength,
   startQueueResumer,
+  pruneOldWaMessages,
   DAILY_LIMIT,
 };
