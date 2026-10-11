@@ -31,9 +31,14 @@ export default function PilihTsub() {
   useEffect(() => {
     // Kalau REE ini ternyata udah pernah pilih TSUB (mis. buka halaman ini
     // lewat back button), langsung lempar balik ke Dashboard.
-    api.me().then((me) => {
-      if (me.tsubId) navigate('/', { replace: true });
-    });
+    api
+      .me()
+      .then((me) => {
+        if (me.tsubId) navigate('/', { replace: true });
+      })
+      .catch(() => {
+        /* 401 udah diurus api.js; error lain ditangani load() di bawah */
+      });
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

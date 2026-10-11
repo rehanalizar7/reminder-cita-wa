@@ -32,6 +32,41 @@ export function googleLoginUrl() {
   return `${BASE_URL}/auth/google`;
 }
 
+// Pesan yang mau ditampilin di halaman login setelah user ditendang keluar
+// (sesi habis, akun dinonaktifkan, dll). Disimpan di sessionStorage karena
+// redirect-nya full page reload -- state React ikut hilang.
+const AUTH_MSG_KEY = 'cita_auth_msg';
+
+export function peekAuthMessage() {
+  try {
+    return sessionStorage.getItem(AUTH_MSG_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthMessage() {
+  try {
+    sessionStorage.removeItem(AUTH_MSG_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function redirectToLogin(message) {
+  clearToken();
+  try {
+    if (message) sessionStorage.setItem(AUTH_MSG_KEY, message);
+  } catch {
+    /* ignore */
+  }
+  if (window.location.pathname !== '/login') window.location.href = '/login';
+}
+
+// Endpoint yang 401-nya artinya "kredensial salah", BUKAN "sesi habis" --
+// error-nya harus dibalikin ke form, jangan reload ke /login.
+const CREDENTIAL_ENDPOINTS = new Set(['/auth/login']);
+
 async function request(path, { method = 'GET', body, params } = {}) {
   const url = new URL(BASE_URL + path);
   if (params) {
@@ -41,27 +76,61 @@ async function request(path, { method = 'GET', body, params } = {}) {
   }
 
   const token = getToken();
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  // 401 = JWT aplikasi tidak valid → logout. Bukan untuk error Google API
-  // (token Google yang rusak dikembalikan sebagai 409 GOOGLE_RECONNECT_REQUIRED).
-  if (res.status === 401) {
-    clearToken();
-    window.location.href = '/login';
-    throw new Error('Sesi habis, silakan login ulang');
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('Gagal terhubung ke server. Cek koneksi internet kamu lalu coba lagi.');
   }
 
   const data = await res.json().catch(() => ({}));
+
+  // 401 + data.code: error domain (mis. token Google Contacts kadaluwarsa →
+  // GOOGLE_RECONNECT_REQUIRED). Balikin ke caller dengan err.code-nya;
+  // jangan clearToken atau redirect ke /login.
+  if (res.status === 401 && data.code) {
+    const err = new Error(data.error || 'Tidak diizinkan.');
+    err.code = data.code;
+    err.status = res.status;
+    throw err;
+  }
+
+  // 401 murni tanpa code: sesi habis atau JWT tidak valid.
+  // Endpoint di CREDENTIAL_ENDPOINTS (mis. /auth/login): balikin ke form, jangan redirect.
+  if (res.status === 401 && !CREDENTIAL_ENDPOINTS.has(path)) {
+    const msg = data.error || 'Sesi habis, silakan login ulang.';
+    redirectToLogin(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+
+  // 403 MUST_CHANGE_PASSWORD: admin baru reset password REE yang lagi login --
+  // semua request ditolak backend sampai password diganti. Arahkan langsung ke halamannya.
+  if (res.status === 403 && data.code === 'MUST_CHANGE_PASSWORD') {
+    if (window.location.pathname !== '/change-password') window.location.href = '/change-password';
+    const err = new Error(data.error || 'Ganti password dulu sebelum melanjutkan.');
+    err.code = data.code;
+    err.status = res.status;
+    throw err;
+  }
+
   if (!res.ok) {
+    if (!data.error && res.status >= 502 && res.status <= 504) {
+      const err = new Error(`Server lagi gak bisa dihubungi (${res.status}). Coba lagi sebentar.`);
+      err.status = res.status;
+      throw err;
+    }
     const err = new Error(data.error || `Request gagal (${res.status})`);
-    if (data.code) err.code = data.code; // teruskan code dari backend (mis. GOOGLE_RECONNECT_REQUIRED)
+    if (data.code) err.code = data.code;
+    err.status = res.status;
     throw err;
   }
   return data;
@@ -125,18 +194,35 @@ export const api = {
     const token = getToken();
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${BASE_URL}/contacts/upload/excel`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    if (res.status === 401) {
-      clearToken();
-      window.location.href = '/login';
-      throw new Error('Sesi habis, silakan login ulang');
+    let res;
+    try {
+      res = await fetch(`${BASE_URL}/contacts/upload/excel`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+    } catch {
+      throw new Error('Gagal terhubung ke server. Cek koneksi internet kamu lalu coba lagi.');
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Upload gagal (${res.status})`);
+    if (res.status === 401) {
+      if (data.code) {
+        const err = new Error(data.error || 'Tidak diizinkan.');
+        err.code = data.code;
+        err.status = res.status;
+        throw err;
+      }
+      redirectToLogin(data.error || 'Sesi habis, silakan login ulang.');
+      const err = new Error(data.error || 'Sesi habis, silakan login ulang.');
+      err.status = res.status;
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error(data.error || `Upload gagal (${res.status})`);
+      if (data.code) err.code = data.code;
+      err.status = res.status;
+      throw err;
+    }
     return data;
   },
 

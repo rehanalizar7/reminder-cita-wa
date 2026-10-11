@@ -4,7 +4,7 @@
 //   node scripts/set-admin.js --email <e> --username <u> --password <p> [--name <n>]
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { eq } = require('drizzle-orm');
+const { eq, sql } = require('drizzle-orm');
 const { db, schema } = require('../src/db');
 
 function parseArgs() {
@@ -28,9 +28,10 @@ async function main() {
   if (password.length < 6) { console.error('Password minimal 6 karakter'); process.exit(1); }
 
   const uname = username.trim().toLowerCase();
+  const cleanEmail = email.trim().toLowerCase();
   const passwordHash = await bcrypt.hash(password, 12);
 
-  const [existing] = await db.select().from(schema.ree).where(eq(schema.ree.email, email.trim()));
+  const [existing] = await db.select().from(schema.ree).where(sql`lower(trim(${schema.ree.email})) = ${cleanEmail}`);
 
   if (existing) {
     await db
@@ -49,7 +50,7 @@ async function main() {
     const [created] = await db
       .insert(schema.ree)
       .values({
-        email: email.trim(),
+        email: cleanEmail,
         name: displayName,
         username: uname,
         passwordHash,

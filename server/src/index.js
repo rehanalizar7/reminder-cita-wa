@@ -19,6 +19,12 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
+// Production: browser -> Cloudflare -> cloudflared -> nginx -> node, dan
+// cloudflared + nginx dua-duanya di 127.0.0.1. Percayai X-Forwarded-For HANYA
+// dari hop loopback biar req.ip = IP asli user (dipakai rate limiter login),
+// tanpa bisa dipalsukan dari luar.
+app.set('trust proxy', 'loopback');
+
 app.use(cors({ origin: process.env.WEB_BASE_URL || '*' }));
 app.use(express.json({ limit: '2mb' }));
 

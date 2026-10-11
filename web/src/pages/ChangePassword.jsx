@@ -27,15 +27,24 @@ export default function ChangePassword() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [loadError, setLoadError] = useState('');
+
+  function loadMe() {
+    setLoadError('');
+    api
+      .me()
+      .then((me) => setMustChange(me.mustChangePassword))
+      // 401 udah diurus api.js (balik ke /login + pesan). Error lain (server/
+      // tunnel lagi putus) ditampilin di sini, jangan dilempar ke /login diam-diam.
+      .catch((err) => setLoadError(err.message));
+  }
 
   useEffect(() => {
     if (!getToken()) {
       navigate('/login', { replace: true });
       return;
     }
-    api.me()
-      .then((me) => setMustChange(me.mustChangePassword))
-      .catch(() => navigate('/login', { replace: true }));
+    loadMe();
   }, []);
 
   async function handleSubmit(e) {
@@ -63,6 +72,19 @@ export default function ChangePassword() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (loadError) {
+    return (
+      <div className="center-page">
+        <div className="card" style={{ maxWidth: 380 }}>
+          <div className="error-box">{loadError}</div>
+          <button style={{ width: '100%' }} onClick={loadMe}>
+            Coba lagi
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (mustChange === null) return null; // tunggu me() selesai

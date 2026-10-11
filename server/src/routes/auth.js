@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const rateLimit = require('express-rate-limit');
-const { eq } = require('drizzle-orm');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { eq, sql } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { getAuthUrl, exchangeCodeForTokens, getUserInfo } = require('../auth/googleOAuth');
 const { signSession } = require('../auth/jwt');
@@ -12,18 +12,22 @@ const router = express.Router();
 
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
-// Rate limiter: maks 5 percobaan per 15 menit per IP+username.
+// Rate limiter: maks 5 percobaan GAGAL per 15 menit per IP+username.
 // Melindungi dari brute-force tanpa memblokir IP-sharing (NAT, kantor).
+// req.ip = IP asli user karena index.js set `trust proxy` ke loopback
+// (cloudflared -> nginx -> node, semuanya di 127.0.0.1).
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  keyGenerator: (req) => `${req.ip}:${(req.body?.username || '').toLowerCase()}`,
+  limit: 5,
+  keyGenerator: (req) =>
+    `${ipKeyGenerator(req.ip || '')}:${String(req.body?.username || '').trim().toLowerCase()}`,
   handler: (req, res) =>
-    res.status(429).json({ error: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' }),
+    res.status(429).json({ error: 'Terlalu banyak percobaan login gagal. Coba lagi dalam 15 menit.' }),
   standardHeaders: true,
   legacyHeaders: false,
-  // Tidak skip sukses — tiap percobaan dihitung, bukan hanya yang gagal
-  skipSuccessfulRequests: false,
+  // Login yang berhasil gak dihitung -- kalau dihitung, REE yang login dari
+  // beberapa HP/browser bisa kekunci 15 menit padahal password-nya bener.
+  skipSuccessfulRequests: true,
 });
 
 // Step 1: dashboard "Login with Google" button links/redirects here.
@@ -55,7 +59,13 @@ router.get('/google/callback', wrap(async (req, res) => {
     }
 
     // Lookup-only: email harus sudah terdaftar. Tidak ada auto-create.
-    const [ree] = await db.select().from(schema.ree).where(eq(schema.ree.email, info.email));
+    // Case-insensitive: Google selalu balikin email huruf kecil, tapi admin
+    // bisa aja ngetik "Budi@Gmail.com" pas bikin akun.
+    const email = info.email.trim().toLowerCase();
+    const [ree] = await db
+      .select()
+      .from(schema.ree)
+      .where(sql`lower(trim(${schema.ree.email})) = ${email}`);
     if (!ree) {
       return res.redirect(`${webUrl}/login?error=account_not_found`);
     }
@@ -81,10 +91,12 @@ router.get('/google/callback', wrap(async (req, res) => {
 
     const jwtToken = signSession(updated);
 
-    // Kalau harus ganti password, arahkan ke halaman khusus dengan token di query
-    if (updated.mustChangePassword) {
-      return res.redirect(`${webUrl}/change-password?token=${encodeURIComponent(jwtToken)}`);
-    }
+    // Selalu lewat /oauth-callback: halaman itu nyimpen token dulu, baru
+    // RequireSetup di dashboard yang ngarahin ke /change-password atau
+    // /pilih-tsub kalau perlu. Dulu akun must_change_password langsung
+    // diarahkan ke /change-password?token=..., tapi route itu dibungkus
+    // RequireAuth yang ngecek localStorage SEBELUM token sempat disimpan --
+    // akibatnya REE baru di browser bersih mental balik ke /login tanpa pesan.
     res.redirect(`${webUrl}/oauth-callback?token=${encodeURIComponent(jwtToken)}`);
   } catch (err) {
     logger.error({ err }, 'Google OAuth callback gagal');

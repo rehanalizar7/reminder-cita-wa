@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, setToken, googleLoginUrl } from '../lib/api';
+import { api, setToken, googleLoginUrl, peekAuthMessage, clearAuthMessage } from '../lib/api';
 
 const ERROR_MESSAGES = {
   domain_not_allowed: 'Email kamu bukan dari domain yang diizinkan.',
@@ -8,12 +8,26 @@ const ERROR_MESSAGES = {
   missing_code: 'Login Google gagal (kode tidak ditemukan). Coba lagi.',
   account_not_found: 'Email ini belum terdaftar. Hubungi admin.',
   account_disabled: 'Akun kamu dinonaktifkan. Hubungi admin.',
+  access_denied: 'Login Google dibatalkan atau ditolak. Kalau kamu gak membatalkan, minta admin daftarin email kamu sebagai test user di Google Cloud Console.',
 };
 
 export default function Login() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const urlError = params.get('error');
+
+  // Pesan dari api.js waktu user ditendang keluar (sesi habis, akun
+  // dinonaktifkan, ...). Dibaca sekali, lalu dihapus biar gak muncul lagi.
+  const [kickMessage] = useState(() => peekAuthMessage());
+  useEffect(() => {
+    clearAuthMessage();
+  }, []);
+  const [dismissedTop, setDismissedTop] = useState(false);
+  const topError = dismissedTop
+    ? ''
+    : urlError
+      ? ERROR_MESSAGES[urlError] || `Terjadi kesalahan saat login (${urlError}).`
+      : kickMessage;
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -23,6 +37,9 @@ export default function Login() {
   async function handleLogin(e) {
     e.preventDefault();
     setFormError('');
+    // Pesan error lama (dari redirect) disembunyikan biar gak ketuker sama hasil percobaan ini
+    setDismissedTop(true);
+    if (urlError) setParams({}, { replace: true });
     if (!username || !password) {
       setFormError('Username dan password wajib diisi.');
       return;
@@ -48,9 +65,7 @@ export default function Login() {
       <div className="card" style={{ maxWidth: 380 }}>
         <h2 style={{ textAlign: 'center', marginTop: 0 }}>Reminder CITA via WA</h2>
 
-        {urlError && (
-          <div className="error-box">{ERROR_MESSAGES[urlError] || 'Terjadi kesalahan saat login.'}</div>
-        )}
+        {topError && <div className="error-box">{topError}</div>}
 
         <form onSubmit={handleLogin}>
           <div className="field">

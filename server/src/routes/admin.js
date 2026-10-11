@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { eq, asc } = require('drizzle-orm');
+const { eq, asc, sql } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth/middleware');
 
@@ -44,14 +44,18 @@ router.post('/users', wrap(async (req, res) => {
   }
 
   const uname = username.trim().toLowerCase();
+  const cleanEmail = email ? String(email).trim().toLowerCase() : '';
 
   // Cek duplikat username
   const [existing] = await db.select({ id: schema.ree.id }).from(schema.ree).where(eq(schema.ree.username, uname));
   if (existing) return res.status(409).json({ error: 'Username sudah dipakai' });
 
   // Cek duplikat email (kalau diberikan)
-  if (email) {
-    const [existingEmail] = await db.select({ id: schema.ree.id }).from(schema.ree).where(eq(schema.ree.email, email.trim()));
+  if (cleanEmail) {
+    const [existingEmail] = await db
+      .select({ id: schema.ree.id })
+      .from(schema.ree)
+      .where(sql`lower(trim(${schema.ree.email})) = ${cleanEmail}`);
     if (existingEmail) return res.status(409).json({ error: 'Email sudah terdaftar' });
   }
 
@@ -61,7 +65,7 @@ router.post('/users', wrap(async (req, res) => {
     .values({
       name: name.trim(),
       username: uname,
-      email: email ? email.trim() : `${uname}@local`,
+      email: cleanEmail || `${uname}@local`,
       passwordHash,
       mustChangePassword: true,
       role: 'ree',
