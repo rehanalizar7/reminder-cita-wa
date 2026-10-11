@@ -22,6 +22,13 @@ const app = express();
 app.use(cors({ origin: process.env.WEB_BASE_URL || '*' }));
 app.use(express.json({ limit: '2mb' }));
 
+// Matikan cache browser untuk semua respons API — mencegah browser memakai
+// data lama (mis. status Google Contacts setelah disconnect → 304 stale).
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Global middleware: untuk semua rute non-/auth/* dan non-/health:
@@ -30,7 +37,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 // Router individual tetap punya router.use(requireAuth) sendiri; karena requireAuth
 // short-circuit kalau req.ree sudah diset, tidak ada double DB query.
 app.use((req, res, next) => {
-  if (req.path.startsWith('/auth/') || req.path === '/health') return next();
+  if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/contacts/google/callback') return next();
   requireAuth(req, res, () => {
     if (req.ree.mustChangePassword) {
       return res.status(403).json({ error: 'Ganti password dulu sebelum melanjutkan.', code: 'MUST_CHANGE_PASSWORD' });

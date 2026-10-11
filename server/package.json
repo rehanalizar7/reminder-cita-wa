@@ -23,6 +23,7 @@
     "google-auth-library": "^9.14.1",
     "googleapis": "^144.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.4.0",
     "node-cache": "^5.1.2",
     "node-cron": "^3.0.3",
     "pino": "^9.4.0",

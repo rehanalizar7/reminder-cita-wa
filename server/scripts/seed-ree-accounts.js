@@ -62,12 +62,19 @@ async function main() {
       }
       await db
         .update(schema.ree)
-        .set({ username: uname, passwordHash, mustChangePassword: true })
+        .set({
+          username: uname,
+          passwordHash,
+          mustChangePassword: true,
+          // Pastikan ree.tsubId terisi — sumber kebenaran untuk /auth/me & RequireSetup
+          tsubId: tsub.id,
+        })
         .where(eq(schema.ree.id, ree.id));
       summary.push(`  UPDT  ${tsub.code} → ${ree.name} (${ree.email || uname})`);
       updated++;
     } else {
-      // TSUB belum diklaim — cari atau buat REE, lalu klaim
+      // TSUB belum diklaim — cari atau buat REE, lalu klaim KEDUANYA:
+      // tsub.assigned_ree_id DAN ree.tsub_id (dua kolom, satu sumber kebenaran)
       const [existingByUsername] = await db
         .select()
         .from(schema.ree)
@@ -75,16 +82,16 @@ async function main() {
 
       let reeId;
       if (existingByUsername) {
-        // REE sudah ada (dari run sebelumnya) — update password saja
+        // REE sudah ada (dari run sebelumnya) — update password + tsubId
         await db
           .update(schema.ree)
-          .set({ passwordHash, mustChangePassword: true })
+          .set({ passwordHash, mustChangePassword: true, tsubId: tsub.id })
           .where(eq(schema.ree.id, existingByUsername.id));
         reeId = existingByUsername.id;
-        summary.push(`  UPDT  ${tsub.code} → akun ${uname} sudah ada, password diperbarui`);
+        summary.push(`  UPDT  ${tsub.code} → akun ${uname} sudah ada, password + tsubId diperbarui`);
         updated++;
       } else {
-        // Buat REE baru
+        // Buat REE baru dengan tsubId langsung terisi
         const [newRee] = await db
           .insert(schema.ree)
           .values({
@@ -95,6 +102,7 @@ async function main() {
             mustChangePassword: true,
             role: 'ree',
             isActive: true,
+            tsubId: tsub.id,
           })
           .returning();
         reeId = newRee.id;
@@ -102,7 +110,7 @@ async function main() {
         created++;
       }
 
-      // Klaim TSUB
+      // Klaim sisi tsub juga (tsub.assigned_ree_id)
       await db
         .update(schema.tsub)
         .set({ assignedReeId: reeId, assignedAt: new Date() })

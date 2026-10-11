@@ -43,6 +43,13 @@
       "when": 1791304217723,
       "tag": "0005_jittery_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791305656086,
+      "tag": "0006_happy_chimera",
+      "breakpoints": true
     }
   ]
 }

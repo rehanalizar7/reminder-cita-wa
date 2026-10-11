@@ -39,6 +39,11 @@ const ree = sqliteTable('ree', {
   // bakal ngarahin mereka ke halaman pilih TSUB dulu sebelum ke Dashboard).
   tsubId: text('tsub_id'),
 
+  // Token terpisah untuk import kontak Google (bukan dari flow login).
+  // Bisa berbeda akun dengan email login. Fallback ke googleRefreshToken kalau kosong.
+  contactsGoogleRefreshToken: text('contacts_google_refresh_token'),
+  contactsGoogleEmail: text('contacts_google_email'),
+
   // Auth & akun management
   role: text('role').notNull().default('ree'), // 'ree' | 'admin'
   username: text('username'), // unique (lihat index), nullable buat user Google-only lama

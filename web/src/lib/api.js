@@ -50,6 +50,8 @@ async function request(path, { method = 'GET', body, params } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
+  // 401 = JWT aplikasi tidak valid → logout. Bukan untuk error Google API
+  // (token Google yang rusak dikembalikan sebagai 409 GOOGLE_RECONNECT_REQUIRED).
   if (res.status === 401) {
     clearToken();
     window.location.href = '/login';
@@ -58,7 +60,9 @@ async function request(path, { method = 'GET', body, params } = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || `Request gagal (${res.status})`);
+    const err = new Error(data.error || `Request gagal (${res.status})`);
+    if (data.code) err.code = data.code; // teruskan code dari backend (mis. GOOGLE_RECONNECT_REQUIRED)
+    throw err;
   }
   return data;
 }
@@ -70,10 +74,6 @@ export const api = {
   waConnect: () => request('/wa/connect', { method: 'POST' }),
   waLogout: () => request('/wa/logout', { method: 'POST' }),
   waSafety: () => request('/wa/safety'),
-
-  contactsPreview: () => request('/contacts/preview'),
-  contactsImport: (payload) => request('/contacts/import', { method: 'POST', body: payload }),
-  setPattern: (payload) => request('/contacts/pattern', { method: 'PUT', body: payload }),
 
   outlets: (params) => request('/outlets', { params }),
   updateOutlet: (id, body) => request(`/outlets/${id}`, { method: 'PATCH', body }),
@@ -100,6 +100,54 @@ export const api = {
   tsubAvailable: () => request('/tsub/available'),
   tsubClaim: (tsubId) => request('/tsub/claim', { method: 'POST', body: { tsubId } }),
   citaRetailerSearch: (search) => request('/tsub/retailers', { params: { search } }),
+
+  // Contacts: Google OAuth (terpisah dari login)
+  contactsGoogleStatus: () => request('/contacts/google/status'),
+  // POST → { url } — frontend yang navigasi ke url, bukan server redirect,
+  // supaya request tetap bawa Bearer token.
+  contactsGoogleGetConnectUrl: () => request('/contacts/google/connect-url', { method: 'POST' }),
+  contactsGoogleDisconnect: () => request('/contacts/google/disconnect', { method: 'DELETE' }),
+  contactsGooglePreview: () => request('/contacts/google/preview'),
+
+  // Contacts: Excel
+  contactsExcelTemplate: async () => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}/contacts/template`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `Gagal download template (${res.status})`);
+    }
+    return res.blob();
+  },
+  contactsUploadExcel: async (file) => {
+    const token = getToken();
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE_URL}/contacts/upload/excel`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (res.status === 401) {
+      clearToken();
+      window.location.href = '/login';
+      throw new Error('Sesi habis, silakan login ulang');
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Upload gagal (${res.status})`);
+    return data;
+  },
+
+  // Contacts: Manual
+  contactsPreviewManual: (rows) => request('/contacts/preview/manual', { method: 'POST', body: { rows } }),
+
+  // Contacts: Commit (semua sumber pakai endpoint yang sama)
+  contactsImport: (rows, savePattern) => request('/contacts/import', { method: 'POST', body: { rows, savePattern } }),
+
+  // Pattern
+  setPattern: (payload) => request('/contacts/pattern', { method: 'PUT', body: payload }),
 
   login: (username, password) => request('/auth/login', { method: 'POST', body: { username, password } }),
   changePassword: (currentPassword, newPassword) =>
