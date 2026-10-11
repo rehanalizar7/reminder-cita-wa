@@ -1,10 +1,13 @@
 require('dotenv').config();
+// HARUS paling atas sebelum router dibuat: bikin error di handler async
+// diteruskan ke error handler JSON, bukan bikin proses crash.
+require('./utils/asyncRoutes');
 const express = require('express');
 const cors = require('cors');
 const { logger } = require('./utils/logger');
 const { restoreAllSessions, startQueueResumer } = require('./wa/sessionManager');
 const { startScheduler } = require('./scheduler/worker');
-const { requireAuth } = require('./auth/middleware');
+const { requireAuth, blockAdmin } = require('./auth/middleware');
 
 const authRoutes = require('./routes/auth');
 const contactsRoutes = require('./routes/contacts');
@@ -16,6 +19,7 @@ const sendRoutes = require('./routes/send');
 const scheduleRoutes = require('./routes/schedules');
 const tsubRoutes = require('./routes/tsub');
 const adminRoutes = require('./routes/admin');
+const spvRoutes = require('./routes/spv');
 
 const app = express();
 
@@ -53,21 +57,37 @@ app.use((req, res, next) => {
 });
 
 app.use('/auth', authRoutes);
-app.use('/contacts', contactsRoutes);
-app.use('/outlets', outletsRoutes);
-app.use('/groups', groupsRoutes);
-app.use('/templates', templatesRoutes);
-app.use('/wa', waRoutes);
-app.use('/send', sendRoutes);
-app.use('/schedules', scheduleRoutes);
+// Fitur operasional (kirim reminder) cuma buat REE & SPV -- admin ditolak.
+app.use('/contacts', blockAdmin, contactsRoutes);
+app.use('/outlets', blockAdmin, outletsRoutes);
+app.use('/groups', blockAdmin, groupsRoutes);
+app.use('/templates', blockAdmin, templatesRoutes);
+app.use('/wa', blockAdmin, waRoutes);
+app.use('/send', blockAdmin, sendRoutes);
+app.use('/schedules', blockAdmin, scheduleRoutes);
 app.use('/tsub', tsubRoutes);
+app.use('/spv', spvRoutes);
 app.use('/admin', adminRoutes);
+
+app.use((req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan' }));
 
 // Fallback error handler so a thrown error in a route becomes JSON, not an HTML
 // stack trace (routes should still try/catch, this is a safety net).
 app.use((err, req, res, next) => {
+  // Body JSON rusak / kegedean dari express.json() -- itu salah client, bukan server.
+  if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+    return res.status(400).json({ error: err.type === 'entity.too.large' ? 'Data terlalu besar' : 'Format data tidak valid' });
+  }
   logger.error({ err, path: req.path }, 'Unhandled error');
+  if (res.headersSent) return next(err);
   res.status(500).json({ error: 'Terjadi kesalahan di server' });
+});
+
+// Jaring pengaman terakhir: promise yang reject di luar request (callback
+// Baileys, timer, dll) cukup dicatat -- jangan sampai satu error kecil
+// mematikan proses dan memutus SEMUA sesi WA REE sekaligus.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection');
 });
 
 const PORT = process.env.PORT || 4000;
@@ -84,7 +104,13 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  logger.error({ err }, 'Gagal start server');
-  process.exit(1);
-});
+// Normalnya (PM2 / `node src/index.js`) server langsung start. Skrip tes set
+// REMINDER_CITA_NO_START=1 biar cuma dapet `app` tanpa sesi WA/scheduler/listen.
+if (process.env.REMINDER_CITA_NO_START !== '1') {
+  main().catch((err) => {
+    logger.error({ err }, 'Gagal start server');
+    process.exit(1);
+  });
+}
+
+module.exports = { app };

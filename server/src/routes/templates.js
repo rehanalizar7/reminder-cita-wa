@@ -3,6 +3,7 @@ const { eq, or, isNull, desc } = require('drizzle-orm');
 const { db, schema } = require('../db');
 const { requireAuth } = require('../auth/middleware');
 const { AVAILABLE_PLACEHOLDERS } = require('../utils/template');
+const { deleteTemplateSafely } = require('../services/templateDelete');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -19,10 +20,12 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { name, body } = req.body || {};
-  if (!name || !body) return res.status(400).json({ error: 'Nama dan isi template wajib diisi' });
+  if (!String(name || '').trim() || !String(body || '').trim()) {
+    return res.status(400).json({ error: 'Nama dan isi template wajib diisi' });
+  }
   const [template] = await db
     .insert(schema.messageTemplate)
-    .values({ reeId: req.ree.id, name, body })
+    .values({ reeId: req.ree.id, name: String(name).trim(), body: String(body) })
     .returning();
   res.status(201).json(template);
 });
@@ -34,8 +37,9 @@ router.put('/:id', async (req, res) => {
   }
   const { name, body } = req.body || {};
   const data = {};
-  if (name) data.name = name;
-  if (body) data.body = body;
+  if (String(name || '').trim()) data.name = String(name).trim();
+  if (String(body || '').trim()) data.body = String(body);
+  if (!Object.keys(data).length) return res.status(400).json({ error: 'Nama atau isi template wajib diisi' });
   const [updated] = await db
     .update(schema.messageTemplate)
     .set(data)
@@ -49,7 +53,8 @@ router.delete('/:id', async (req, res) => {
   if (!existing || existing.reeId !== req.ree.id) {
     return res.status(404).json({ error: 'Template tidak ditemukan' });
   }
-  await db.delete(schema.messageTemplate).where(eq(schema.messageTemplate.id, req.params.id));
+  const result = deleteTemplateSafely(existing.id);
+  if (!result.ok) return res.status(409).json({ error: result.error });
   res.json({ ok: true });
 });
 

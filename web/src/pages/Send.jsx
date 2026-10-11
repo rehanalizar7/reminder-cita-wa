@@ -1,19 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast.jsx';
+import { useMe } from '../lib/me.jsx';
+import { loadTargetData, targetSummary, groupOptionLabel, outletOptionLabel } from '../lib/targets.jsx';
 
 const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red' };
 
 export default function Send() {
   const showToast = useToast();
+  const { me } = useMe();
+  const isSpv = me?.role === 'spv';
+
   const [templates, setTemplates] = useState([]);
   const [groups, setGroups] = useState([]);
   const [outlets, setOutlets] = useState([]);
+  const [members, setMembers] = useState([]);
   const [history, setHistory] = useState([]);
 
   const [templateId, setTemplateId] = useState('');
   const [targetType, setTargetType] = useState('ALL');
   const [groupId, setGroupId] = useState('');
+  const [targetReeId, setTargetReeId] = useState('');
   const [selectedOutlets, setSelectedOutlets] = useState(new Set());
   const [outletSearch, setOutletSearch] = useState('');
 
@@ -23,26 +30,29 @@ export default function Send() {
   const [selectedLog, setSelectedLog] = useState(null);
 
   async function loadAll() {
-    const [t, g, o, h] = await Promise.all([
+    const [t, data, h] = await Promise.all([
       api.templates(),
-      api.groups(),
-      api.outlets({ limit: 500, isActive: 'true' }),
+      loadTargetData(isSpv, { activeOnly: true }),
       api.sendHistory({ limit: 30 }),
     ]);
     setTemplates(t.templates);
-    setGroups(g);
-    setOutlets(o.items);
+    setGroups(data.groups);
+    setOutlets(data.outlets);
+    setMembers(data.members);
     setHistory(h);
   }
 
   useEffect(() => {
     loadAll().catch((err) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredOutlets = useMemo(() => {
     if (!outletSearch.trim()) return outlets;
     const q = outletSearch.toLowerCase();
-    return outlets.filter((o) => o.name.toLowerCase().includes(q) || o.phone.includes(q));
+    return outlets.filter(
+      (o) => o.name.toLowerCase().includes(q) || o.phone.includes(q) || (o.ownerName || '').toLowerCase().includes(q)
+    );
   }, [outlets, outletSearch]);
 
   function toggleOutlet(id) {
@@ -53,22 +63,26 @@ export default function Send() {
     });
   }
 
-  const targetCount =
-    targetType === 'ALL' ? outlets.length : targetType === 'GROUP' ? groups.find((g) => g.id === groupId)?.outletCount || 0 : selectedOutlets.size;
+  const summary = targetSummary({ targetType, outlets, groups, members, groupId, targetReeId, selectedOutlets, isSpv });
 
   async function handleSend() {
     setError('');
     setSuccess('');
     if (!templateId) return setError('Pilih template dulu.');
     if (targetType === 'GROUP' && !groupId) return setError('Pilih grup dulu.');
+    if (targetType === 'REE' && !targetReeId) return setError('Pilih REE dulu.');
     if (targetType === 'SELECTED' && selectedOutlets.size === 0) return setError('Pilih minimal satu outlet.');
 
-    if (!confirm(`Kirim ke ${targetCount} outlet sekarang?`)) return;
+    const confirmText = isSpv
+      ? `Kirim ke ${summary.count} outlet tim sekarang? Pesan keluar dari nomor WA kamu sendiri.`
+      : `Kirim ke ${summary.count} outlet sekarang?`;
+    if (!confirm(confirmText)) return;
 
     setSending(true);
     try {
       const body = { templateId, targetType };
       if (targetType === 'GROUP') body.groupId = groupId;
+      if (targetType === 'REE') body.targetReeId = targetReeId;
       if (targetType === 'SELECTED') body.outletIds = [...selectedOutlets];
       const res = await api.sendNow(body);
       const msg = `${res.queued} pesan masuk antrian kirim. Cek status di riwayat & Dashboard.`;
@@ -90,6 +104,18 @@ export default function Send() {
       {error && <div className="error-box">{error}</div>}
       {success && <div className="success-box">{success}</div>}
 
+      {isSpv && (
+        <div className="info-box">
+          Pesan dikirim dari <strong>nomor WA kamu sendiri</strong> ke outlet milik REE di tim kamu, dan dihitung ke batas
+          kirim harian kamu. Outlet yang sama mungkin juga dapet reminder dari REE-nya, jadi atur jadwal biar gak
+          barengan.
+        </div>
+      )}
+
+      {isSpv && members.length === 0 && (
+        <div className="warn-box">Belum ada REE di tim kamu. Minta admin atur TSUB yang kamu pegang.</div>
+      )}
+
       <div className="card">
         <div className="field">
           <label>Template</label>
@@ -98,6 +124,7 @@ export default function Send() {
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
+                {!t.reeId ? ' (bersama)' : ''}
               </option>
             ))}
           </select>
@@ -107,8 +134,14 @@ export default function Send() {
           <label>Kirim ke</label>
           <div className="row wrap">
             <label className="checkbox-row">
-              <input type="radio" checked={targetType === 'ALL'} onChange={() => setTargetType('ALL')} /> Semua outlet
+              <input type="radio" checked={targetType === 'ALL'} onChange={() => setTargetType('ALL')} />{' '}
+              {isSpv ? 'Semua outlet tim' : 'Semua outlet'}
             </label>
+            {isSpv && (
+              <label className="checkbox-row">
+                <input type="radio" checked={targetType === 'REE'} onChange={() => setTargetType('REE')} /> Per REE
+              </label>
+            )}
             <label className="checkbox-row">
               <input type="radio" checked={targetType === 'GROUP'} onChange={() => setTargetType('GROUP')} /> Per grup
             </label>
@@ -118,13 +151,26 @@ export default function Send() {
           </div>
         </div>
 
+        {targetType === 'REE' && (
+          <div className="field">
+            <select value={targetReeId} onChange={(e) => setTargetReeId(e.target.value)}>
+              <option value="">-- pilih REE --</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.tsubCode} · {m.name} ({m.outletsActive} outlet aktif)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {targetType === 'GROUP' && (
           <div className="field">
             <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
               <option value="">-- pilih grup --</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
-                  {g.name} ({g.outletCount} outlet)
+                  {groupOptionLabel(g, isSpv)}
                 </option>
               ))}
             </select>
@@ -133,12 +179,17 @@ export default function Send() {
 
         {targetType === 'SELECTED' && (
           <div className="field">
-            <input placeholder="Cari outlet..." value={outletSearch} onChange={(e) => setOutletSearch(e.target.value)} style={{ marginBottom: 8 }} />
+            <input
+              placeholder={isSpv ? 'Cari outlet / nomor / nama REE...' : 'Cari outlet...'}
+              value={outletSearch}
+              onChange={(e) => setOutletSearch(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
             <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
               {filteredOutlets.map((o) => (
                 <label key={o.id} className="checkbox-row" style={{ padding: '4px 0' }}>
                   <input type="checkbox" checked={selectedOutlets.has(o.id)} onChange={() => toggleOutlet(o.id)} />
-                  {o.name} <span className="muted">({o.phone})</span>
+                  {outletOptionLabel(o, isSpv)}
                 </label>
               ))}
               {filteredOutlets.length === 0 && <span className="muted">Tidak ada outlet cocok.</span>}
@@ -146,7 +197,7 @@ export default function Send() {
           </div>
         )}
 
-        <p className="muted">Target saat ini: {targetCount} outlet</p>
+        <p className="muted">Target saat ini: {summary.text}</p>
         <button onClick={handleSend} disabled={sending}>
           {sending ? 'Mengirim...' : 'Kirim Sekarang'}
         </button>
@@ -169,7 +220,10 @@ export default function Send() {
               <tr key={h.id} className="clickable-row" onClick={() => setSelectedLog(h)}>
                 <td>
                   {h.outletName}
-                  <div className="muted">{h.phone}</div>
+                  <div className="muted">
+                    {h.phone}
+                    {isSpv && h.outletOwnerName ? ` · ${h.outletOwnerName}` : ''}
+                  </div>
                 </td>
                 <td className="muted col-hide-mobile" style={{ maxWidth: 320 }}>
                   {h.message}
@@ -201,6 +255,13 @@ export default function Send() {
               <div className="modal-label">Outlet</div>
               <div className="modal-value">{selectedLog.outletName}</div>
             </div>
+
+            {isSpv && selectedLog.outletOwnerName && (
+              <div className="modal-field">
+                <div className="modal-label">REE pemilik outlet</div>
+                <div className="modal-value">{selectedLog.outletOwnerName}</div>
+              </div>
+            )}
 
             <div className="modal-field">
               <div className="modal-label">No. HP</div>

@@ -1,19 +1,18 @@
 const express = require('express');
 const cronParser = require('cron-parser');
-const { eq, and, desc } = require('drizzle-orm');
+const { eq, and, desc, or, isNull } = require('drizzle-orm');
+const { alias } = require('drizzle-orm/sqlite-core');
 const { db, schema } = require('../db');
 const { requireAuth } = require('../auth/middleware');
 const { dispatch } = require('../services/dispatch');
+const { validateTarget } = require('../utils/resolveTargets');
+const { getScopeReeIds } = require('../services/team');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// Express 4 doesn't forward rejected promises from async handlers to error
-// middleware automatically — this wrapper does that so every route below gets
-// proper 500 JSON responses instead of hanging requests on unexpected errors.
-const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
-
-router.get('/', wrap(async (req, res) => {
+router.get('/', async (req, res) => {
+  const targetRee = alias(schema.ree, 'target_ree');
   const jobs = await db
     .select({
       id: schema.scheduleJob.id,
@@ -22,6 +21,8 @@ router.get('/', wrap(async (req, res) => {
       targetType: schema.scheduleJob.targetType,
       groupId: schema.scheduleJob.groupId,
       groupName: schema.outletGroup.name,
+      targetReeId: schema.scheduleJob.targetReeId,
+      targetReeName: targetRee.name,
       runAt: schema.scheduleJob.runAt,
       cronExpression: schema.scheduleJob.cronExpression,
       isRecurring: schema.scheduleJob.isRecurring,
@@ -32,27 +33,61 @@ router.get('/', wrap(async (req, res) => {
     .from(schema.scheduleJob)
     .innerJoin(schema.messageTemplate, eq(schema.messageTemplate.id, schema.scheduleJob.templateId))
     .leftJoin(schema.outletGroup, eq(schema.outletGroup.id, schema.scheduleJob.groupId))
+    .leftJoin(targetRee, eq(targetRee.id, schema.scheduleJob.targetReeId))
     .where(eq(schema.scheduleJob.reeId, req.ree.id))
     .orderBy(desc(schema.scheduleJob.createdAt));
   res.json(jobs);
-}));
+});
 
 // POST /schedules
-// One-off: { templateId, targetType, groupId?, outletIds?, runAt: ISOString }
-// Recurring: { templateId, targetType, groupId?, outletIds?, cronExpression, isRecurring: true }
-router.post('/', wrap(async (req, res) => {
-  const { templateId, targetType, groupId, outletIds, runAt, cronExpression, isRecurring } = req.body || {};
+// One-off: { templateId, targetType, groupId?, outletIds?, targetReeId?, runAt: ISOString }
+// Recurring: { templateId, targetType, groupId?, outletIds?, targetReeId?, cronExpression, isRecurring: true }
+router.post('/', async (req, res) => {
+  const { templateId, targetType, groupId, outletIds, targetReeId, runAt, cronExpression, isRecurring } = req.body || {};
 
   if (!templateId || !targetType) return res.status(400).json({ error: 'templateId dan targetType wajib diisi' });
+
+  let runAtDate = null;
   if (isRecurring) {
-    if (!cronExpression) return res.status(400).json({ error: 'cronExpression wajib diisi untuk jadwal berulang' });
+    if (!cronExpression || !String(cronExpression).trim()) {
+      return res.status(400).json({ error: 'cronExpression wajib diisi untuk jadwal berulang' });
+    }
     try {
-      cronParser.parseExpression(cronExpression, { tz: 'Asia/Jakarta' });
+      cronParser.parseExpression(String(cronExpression).trim(), { tz: 'Asia/Jakarta' });
     } catch (err) {
       return res.status(400).json({ error: 'Format cron tidak valid' });
     }
-  } else if (!runAt) {
-    return res.status(400).json({ error: 'runAt wajib diisi untuk jadwal sekali kirim' });
+  } else {
+    if (!runAt) return res.status(400).json({ error: 'runAt wajib diisi untuk jadwal sekali kirim' });
+    runAtDate = new Date(runAt);
+    if (Number.isNaN(runAtDate.getTime())) return res.status(400).json({ error: 'Tanggal/jam kirim tidak valid' });
+  }
+
+  // Template harus milik akun ini atau template bersama.
+  const [template] = await db
+    .select({ id: schema.messageTemplate.id })
+    .from(schema.messageTemplate)
+    .where(
+      and(
+        eq(schema.messageTemplate.id, String(templateId)),
+        or(eq(schema.messageTemplate.reeId, req.ree.id), isNull(schema.messageTemplate.reeId))
+      )
+    );
+  if (!template) return res.status(400).json({ error: 'Template tidak ditemukan' });
+
+  let target;
+  try {
+    target = await validateTarget({
+      user: req.ree,
+      scopeReeIds: getScopeReeIds(req.ree),
+      targetType,
+      groupId,
+      outletIds,
+      targetReeId,
+    });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    throw err;
   }
 
   const job = db.transaction((tx) => {
@@ -60,19 +95,20 @@ router.post('/', wrap(async (req, res) => {
       .insert(schema.scheduleJob)
       .values({
         reeId: req.ree.id,
-        templateId,
-        targetType,
-        groupId: targetType === 'GROUP' ? groupId : null,
-        runAt: !isRecurring ? new Date(runAt) : null,
-        cronExpression: isRecurring ? cronExpression : null,
+        templateId: template.id,
+        targetType: target.targetType,
+        groupId: target.groupId,
+        targetReeId: target.targetReeId,
+        runAt: !isRecurring ? runAtDate : null,
+        cronExpression: isRecurring ? String(cronExpression).trim() : null,
         isRecurring: Boolean(isRecurring),
       })
       .returning()
       .all();
 
-    if (targetType === 'SELECTED' && Array.isArray(outletIds) && outletIds.length) {
+    if (target.targetType === 'SELECTED' && target.outletIds.length) {
       tx.insert(schema.scheduleJobOutlet)
-        .values(outletIds.map((outletId) => ({ scheduleJobId: created.id, outletId })))
+        .values(target.outletIds.map((outletId) => ({ scheduleJobId: created.id, outletId })))
         .run();
     }
 
@@ -80,21 +116,22 @@ router.post('/', wrap(async (req, res) => {
   });
 
   res.status(201).json(job);
-}));
+});
 
-router.patch('/:id', wrap(async (req, res) => {
+router.patch('/:id', async (req, res) => {
   const [existing] = await db.select().from(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
   if (!existing || existing.reeId !== req.ree.id) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
   const { isActive } = req.body || {};
+  if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'isActive harus boolean' });
   const [updated] = await db
     .update(schema.scheduleJob)
-    .set({ ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}) })
+    .set({ isActive })
     .where(eq(schema.scheduleJob.id, req.params.id))
     .returning();
   res.json(updated);
-}));
+});
 
-router.delete('/:id', wrap(async (req, res) => {
+router.delete('/:id', async (req, res) => {
   const [existing] = await db.select().from(schema.scheduleJob).where(
     and(eq(schema.scheduleJob.id, req.params.id), eq(schema.scheduleJob.reeId, req.ree.id))
   );
@@ -102,10 +139,10 @@ router.delete('/:id', wrap(async (req, res) => {
   const deleted = await db.delete(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id)).returning();
   if (!deleted.length) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
   res.json({ ok: true });
-}));
+});
 
 // Fire a saved schedule right now, on demand, without waiting for its cron/runAt.
-router.post('/:id/run-now', wrap(async (req, res) => {
+router.post('/:id/run-now', async (req, res) => {
   const [job] = await db.select().from(schema.scheduleJob).where(eq(schema.scheduleJob.id, req.params.id));
   if (!job || job.reeId !== req.ree.id) return res.status(404).json({ error: 'Jadwal tidak ditemukan' });
 
@@ -114,16 +151,23 @@ router.post('/:id/run-now', wrap(async (req, res) => {
     .from(schema.scheduleJobOutlet)
     .where(eq(schema.scheduleJobOutlet.scheduleJobId, job.id));
 
-  const result = await dispatch({
-    ree: req.ree,
-    templateId: job.templateId,
-    targetType: job.targetType,
-    groupId: job.groupId,
-    outletIds: targets.map((t) => t.outletId),
-    scheduleJobId: job.id,
-  });
+  let result;
+  try {
+    result = await dispatch({
+      ree: req.ree,
+      templateId: job.templateId,
+      targetType: job.targetType,
+      groupId: job.groupId,
+      targetReeId: job.targetReeId,
+      outletIds: targets.map((t) => t.outletId),
+      scheduleJobId: job.id,
+    });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    throw err;
+  }
   await db.update(schema.scheduleJob).set({ lastRunAt: new Date() }).where(eq(schema.scheduleJob.id, job.id));
   res.json({ ok: true, ...result });
-}));
+});
 
 module.exports = router;

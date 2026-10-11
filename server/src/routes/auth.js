@@ -2,7 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { eq, sql } = require('drizzle-orm');
-const { db, schema } = require('../db');
+const { db, sqlite, schema } = require('../db');
+const { getSpvTsubs } = require('../services/team');
 const { getAuthUrl, exchangeCodeForTokens, getUserInfo } = require('../auth/googleOAuth');
 const { signSession } = require('../auth/jwt');
 const { requireAuth } = require('../auth/middleware');
@@ -171,15 +172,22 @@ router.post('/change-password', requireAuth, wrap(async (req, res) => {
 
 router.get('/me', requireAuth, (req, res) => {
   const {
-    id, email, name, role,
+    id, email, name, role, username,
     waConnected, waPhoneNumber, waLastConnectedAt,
     contactPattern, patternIsRegex, tsubId,
     mustChangePassword,
   } = req.ree;
+
+  const tsubCode = tsubId
+    ? sqlite.prepare('SELECT code FROM tsub WHERE id = ?').get(tsubId)?.code || null
+    : null;
+  // SPV: TSUB yang dipegang (diatur admin). Kosong = belum dikasih tim.
+  const spvTsubs = role === 'spv' ? getSpvTsubs(id).map((t) => ({ id: t.id, code: t.code })) : [];
+
   res.json({
-    id, email, name, role,
+    id, email, name, role, username,
     waConnected, waPhoneNumber, waLastConnectedAt,
-    contactPattern, patternIsRegex, tsubId,
+    contactPattern, patternIsRegex, tsubId, tsubCode, spvTsubs,
     mustChangePassword,
   });
 });

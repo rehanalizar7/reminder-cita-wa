@@ -1,9 +1,11 @@
 const express = require('express');
 const { sqlite } = require('../db');
-const { requireAuth } = require('../auth/middleware');
+const { requireAuth, requireRole } = require('../auth/middleware');
 
 const router = express.Router();
-router.use(requireAuth);
+// Klaim & cari data retailer TSUB cuma buat REE. SPV dapet TSUB dari admin
+// (tabel spv_tsub), admin gak pegang TSUB sama sekali.
+router.use(requireAuth, requireRole('ree'));
 
 // GET /tsub/available -- daftar kode TSUB yang belum diklaim REE manapun.
 // Dipakai halaman "Pilih TSUB" pas REE login pertama kali.
@@ -30,6 +32,13 @@ router.post('/claim', (req, res) => {
   // Node cuma single-threaded dan gak ada `await` di tengah, jadi gak ada
   // request lain yang bisa nyelip di antara SELECT dan UPDATE di bawah ini.
   const claim = sqlite.transaction(() => {
+    // Cek ulang di dalam transaksi: admin bisa aja barusan nge-set TSUB REE ini.
+    const fresh = sqlite.prepare('SELECT tsub_id AS tsubId FROM ree WHERE id = ?').get(req.ree.id);
+    if (fresh?.tsubId) {
+      const err = new Error('Kamu sudah punya TSUB, gak bisa diganti lagi');
+      err.status = 409;
+      throw err;
+    }
     const tsubRow = sqlite.prepare('SELECT id, code, assigned_ree_id AS assignedReeId FROM tsub WHERE id = ?').get(tsubId);
     if (!tsubRow) {
       const err = new Error('TSUB tidak ditemukan');

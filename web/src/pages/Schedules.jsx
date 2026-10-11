@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast.jsx';
+import { useMe } from '../lib/me.jsx';
+import { loadTargetData, groupOptionLabel, outletOptionLabel, targetLabel } from '../lib/targets.jsx';
 
 const DAYS = [
   { value: 1, label: 'Sen' },
@@ -14,14 +16,18 @@ const DAYS = [
 
 export default function Schedules() {
   const showToast = useToast();
+  const { me } = useMe();
+  const isSpv = me?.role === 'spv';
   const [templates, setTemplates] = useState([]);
   const [groups, setGroups] = useState([]);
   const [outlets, setOutlets] = useState([]);
+  const [members, setMembers] = useState([]);
   const [schedules, setSchedules] = useState([]);
 
   const [templateId, setTemplateId] = useState('');
   const [targetType, setTargetType] = useState('ALL');
   const [groupId, setGroupId] = useState('');
+  const [targetReeId, setTargetReeId] = useState('');
   const [selectedOutlets, setSelectedOutlets] = useState(new Set());
 
   const [mode, setMode] = useState('once'); // 'once' | 'recurring'
@@ -42,15 +48,17 @@ export default function Schedules() {
   }
 
   async function loadAll() {
-    const [t, g, o, s] = await Promise.all([api.templates(), api.groups(), api.outlets({ limit: 500 }), api.schedules()]);
+    const [t, data, s] = await Promise.all([api.templates(), loadTargetData(isSpv, { activeOnly: false }), api.schedules()]);
     setTemplates(t.templates);
-    setGroups(g);
-    setOutlets(o.items);
+    setGroups(data.groups);
+    setOutlets(data.outlets);
+    setMembers(data.members);
     setSchedules(s);
   }
 
   useEffect(() => {
     loadAll().catch((err) => showToast('error', 'Gagal memuat data: ' + err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleDay(d) {
@@ -73,6 +81,7 @@ export default function Schedules() {
     setFormError('');
     if (!templateId) return setFormError('Pilih template dulu.');
     if (targetType === 'GROUP' && !groupId) return setFormError('Pilih grup dulu.');
+    if (targetType === 'REE' && !targetReeId) return setFormError('Pilih REE dulu.');
     if (targetType === 'SELECTED' && selectedOutlets.size === 0) return setFormError('Pilih minimal satu outlet.');
     if (mode === 'once' && !runAt) return setFormError('Tentukan tanggal & jam kirim.');
 
@@ -80,6 +89,7 @@ export default function Schedules() {
     try {
       const body = { templateId, targetType };
       if (targetType === 'GROUP') body.groupId = groupId;
+      if (targetType === 'REE') body.targetReeId = targetReeId;
       if (targetType === 'SELECTED') body.outletIds = [...selectedOutlets];
 
       if (mode === 'once') {
@@ -155,8 +165,14 @@ export default function Schedules() {
             <label>Kirim ke</label>
             <div className="row wrap">
               <label className="checkbox-row">
-                <input type="radio" checked={targetType === 'ALL'} onChange={() => setTargetType('ALL')} /> Semua outlet
+                <input type="radio" checked={targetType === 'ALL'} onChange={() => setTargetType('ALL')} />{' '}
+                {isSpv ? 'Semua outlet tim' : 'Semua outlet'}
               </label>
+              {isSpv && (
+                <label className="checkbox-row">
+                  <input type="radio" checked={targetType === 'REE'} onChange={() => setTargetType('REE')} /> Per REE
+                </label>
+              )}
               <label className="checkbox-row">
                 <input type="radio" checked={targetType === 'GROUP'} onChange={() => setTargetType('GROUP')} /> Per grup
               </label>
@@ -166,13 +182,26 @@ export default function Schedules() {
             </div>
           </div>
 
+          {targetType === 'REE' && (
+            <div className="field">
+              <select value={targetReeId} onChange={(e) => setTargetReeId(e.target.value)}>
+                <option value="">-- pilih REE --</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.tsubCode} · {m.name} ({m.outletsActive} outlet aktif)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {targetType === 'GROUP' && (
             <div className="field">
               <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
                 <option value="">-- pilih grup --</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.name} ({g.outletCount} outlet)
+                    {groupOptionLabel(g, isSpv)}
                   </option>
                 ))}
               </select>
@@ -194,7 +223,8 @@ export default function Schedules() {
                       })
                     }
                   />
-                  {o.name}
+                  {outletOptionLabel(o, isSpv)}
+                  {!o.isActive && <span className="badge gray" style={{ marginLeft: 6 }}>nonaktif</span>}
                 </label>
               ))}
             </div>
@@ -263,9 +293,7 @@ export default function Schedules() {
             {schedules.map((s) => (
               <tr key={s.id} className="clickable-row" onClick={(e) => handleRowClick(e, s)}>
                 <td>{s.templateName}</td>
-                <td className="muted col-hide-mobile">
-                  {s.targetType === 'ALL' ? 'Semua outlet' : s.targetType === 'GROUP' ? `Grup: ${s.groupName}` : 'Outlet terpilih'}
-                </td>
+                <td className="muted col-hide-mobile">{targetLabel(s, isSpv)}</td>
                 <td className="muted col-hide-mobile">
                   {s.isRecurring ? (
                     <>
@@ -312,13 +340,7 @@ export default function Schedules() {
 
             <div className="modal-field">
               <div className="modal-label">Target</div>
-              <div className="modal-value">
-                {detailSchedule.targetType === 'ALL'
-                  ? 'Semua outlet'
-                  : detailSchedule.targetType === 'GROUP'
-                  ? `Grup: ${detailSchedule.groupName}`
-                  : 'Outlet terpilih'}
-              </div>
+              <div className="modal-value">{targetLabel(detailSchedule, isSpv)}</div>
             </div>
 
             <div className="modal-field">

@@ -4,6 +4,29 @@ import { useToast } from '../lib/toast.jsx';
 
 const EMPTY_FORM = { name: '', body: '' };
 
+const PLACEHOLDER_DESC = {
+  nama_outlet: 'nama outlet',
+  nama_ree: 'REE pemilik outlet',
+  nama_pengirim: 'yang ngirim (kamu sendiri; beda dari nama_ree kalau SPV yang kirim)',
+  no_login_cita: 'nomor login CITA outlet (kosong kalau belum diisi REE)',
+};
+
+export function PlaceholderHelp({ placeholders }) {
+  return (
+    <div className="muted" style={{ marginBottom: 12 }}>
+      Placeholder yang bisa dipakai:
+      <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+        {placeholders.map((p) => (
+          <li key={p}>
+            <code>{`{{${p}}}`}</code>
+            {PLACEHOLDER_DESC[p] ? ` — ${PLACEHOLDER_DESC[p]}` : ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function Templates() {
   const showToast = useToast();
   const [templates, setTemplates] = useState([]);
@@ -78,9 +101,7 @@ export default function Templates() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>{editingId ? 'Edit Template' : 'Template Baru'}</h3>
-        <p className="muted">
-          Placeholder yang bisa dipakai: {placeholders.map((p) => `{{${p}}}`).join(', ')}
-        </p>
+        <PlaceholderHelp placeholders={placeholders} />
         <form onSubmit={handleSubmit}>
           <div className="field">
             <label>Nama template</label>

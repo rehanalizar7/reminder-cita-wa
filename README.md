@@ -109,6 +109,28 @@ di sini cuma default paling simpel biar langsung jalan.
 7. Di **Jadwal**, bikin jadwal sekali kirim (tanggal/jam tertentu) atau berulang
    (pilih hari + jam, atau isi cron manual buat pola yang lebih rumit).
 
+## 6. Role akun: REE, SPV, Admin
+
+| Role | Pegang TSUB | Kirim reminder | Halaman |
+|---|---|---|---|
+| **REE** | 1 TSUB (pilih sendiri pas login pertama, atau diset admin) | Ke outlet miliknya sendiri, dari WA sendiri | Dashboard, Import Kontak, Outlet, Template, Kirim, Jadwal |
+| **SPV** | Beberapa TSUB, diatur admin (1 TSUB maks 1 SPV) | Ke outlet milik REE di TSUB-nya, dari WA SPV sendiri (kena batas harian SPV) | Dashboard SPV, Tim REE, Outlet Tim, Template, Kirim, Jadwal |
+| **Admin** | Gak pegang TSUB | Gak kirim | Ringkasan, Akun, TSUB, Template Bersama |
+
+- **Bikin admin pertama** (sekali, dari server):
+  ```bash
+  cd server
+  node scripts/set-admin.js --username admin --password <password> --name "Admin"
+  ```
+  Script ini nolak naikin akun yang masih pegang TSUB jadi admin.
+- **Akun & role** diatur di halaman Admin → Akun. Ganti role dari/ke SPV atau ke Admin
+  otomatis menonaktifkan jadwal milik akun itu (sasaran kirimnya berubah). Akun harus
+  lepas TSUB-nya dulu sebelum ganti role (kecuali jadi REE dengan TSUB REE-nya sendiri).
+- **TSUB per REE & per SPV** diatur di Admin → TSUB. Pindahin TSUB ke REE lain bikin
+  REE lama jadi tanpa TSUB (dia diminta pilih lagi pas buka dashboard).
+- **Placeholder template**: `{{nama_ree}}` = REE pemilik outlet, `{{nama_pengirim}}` =
+  akun yang ngirim. Kalau REE yang kirim, keduanya sama.
+
 ## Batasan yang perlu kamu tahu (v1, disengaja disederhanakan)
 
 - **Antrian kirim di memory.** Kalau REE belum hubungkan WA (atau lagi putus) terus

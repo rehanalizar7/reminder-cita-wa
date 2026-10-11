@@ -1,12 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { useToast } from '../lib/toast.jsx';
+import { useMe } from '../lib/me.jsx';
+import { WaStatusCard, SafetyCard } from '../components/WaPanel.jsx';
 
 const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red' };
-
-const SAFETY_BADGE = { green: 'green', yellow: 'yellow', red: 'red', gray: 'gray' };
-const SAFETY_LABEL = { green: 'Aman', yellow: 'Waspada', red: 'Berisiko', gray: 'Belum ada data' };
-const SAFETY_ICON = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' };
 
 function isToday(date) {
   const now = new Date();
@@ -40,11 +37,8 @@ function timeAgo(iso) {
 }
 
 export default function Dashboard() {
-  const showToast = useToast();
-  const [me, setMe] = useState(null);
-  const [status, setStatus] = useState(null);
+  const { me } = useMe();
   const [error, setError] = useState('');
-  const pollRef = useRef(null);
 
   const [outletStats, setOutletStats] = useState(null);
   const [groups, setGroups] = useState([]);
@@ -55,19 +49,6 @@ export default function Dashboard() {
   const [activityDateFilter, setActivityDateFilter] = useState('ALL');
   const [activityLimit, setActivityLimit] = useState(8);
   const [selectedActivity, setSelectedActivity] = useState(null);
-
-  const [safety, setSafety] = useState(null);
-  const [showSafetyDetail, setShowSafetyDetail] = useState(false);
-
-  async function refresh() {
-    try {
-      const s = await api.waStatus();
-      setStatus(s);
-      return s;
-    } catch (err) {
-      setError(err.message);
-    }
-  }
 
   async function loadStats() {
     try {
@@ -87,58 +68,9 @@ export default function Dashboard() {
     }
   }
 
-  async function loadSafety() {
-    try {
-      setSafety(await api.waSafety());
-    } catch (err) {
-      // Non-krusial buat halaman ini -- gagal ambil skor keamanan gak perlu bikin
-      // seluruh dashboard nampilin error, cukup diem-diem gak nampilin card-nya.
-    }
-  }
-
   useEffect(() => {
-    api.me().then(setMe).catch((err) => setError(err.message));
-    refresh();
     loadStats();
-    loadSafety();
-    return () => clearInterval(pollRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function startPolling() {
-    clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      const s = await refresh();
-      if (s && s.status === 'open') {
-        clearInterval(pollRef.current);
-        showToast('success', 'WhatsApp berhasil terhubung.');
-      }
-    }, 2500);
-  }
-
-  async function handleConnect() {
-    setError('');
-    try {
-      await api.waConnect();
-      startPolling();
-    } catch (err) {
-      setError(err.message);
-      showToast('error', err.message);
-    }
-  }
-
-  async function handleLogout() {
-    if (!confirm('Putus koneksi WhatsApp? Kamu perlu scan QR lagi buat kirim pesan.')) return;
-    try {
-      await api.waLogout();
-      refresh();
-      showToast('success', 'WhatsApp berhasil diputuskan.');
-    } catch (err) {
-      showToast('error', err.message);
-    }
-  }
-
-  const connected = status?.status === 'open';
 
   const todayLogs = history.filter((h) => isToday(new Date(h.createdAt)));
   const weekLogs = history.filter((h) => isThisWeek(new Date(h.createdAt)));
@@ -176,66 +108,13 @@ export default function Dashboard() {
             <div style={{ fontWeight: 600 }}>{me?.name}</div>
             <div className="muted">{me?.email}</div>
           </div>
+          {me?.tsubCode && <span className="badge gray">{me.tsubCode}</span>}
         </div>
       </div>
 
-      <div className="card">
-        <div className="row between">
-          <h3 style={{ margin: 0 }}>Status WhatsApp</h3>
-          {connected ? (
-            <span className="badge green">Terhubung {status.pendingInQueue ? `· ${status.pendingInQueue} pesan di antrian` : ''}</span>
-          ) : status?.status === 'qr' ? (
-            <span className="badge yellow">Menunggu scan QR</span>
-          ) : status?.status === 'connecting' ? (
-            <span className="badge yellow">Menyambungkan...</span>
-          ) : (
-            <span className="badge gray">Belum terhubung</span>
-          )}
-        </div>
+      <WaStatusCard />
 
-        {!connected && status?.status !== 'qr' && (
-          <div style={{ marginTop: 14 }}>
-            <p className="muted">
-              Hubungkan nomor WhatsApp kamu sendiri buat kirim reminder ke outlet. Scan QR pakai HP yang sama dengan
-              nomor yang mau dipakai.
-            </p>
-            <button onClick={handleConnect}>Hubungkan WhatsApp</button>
-          </div>
-        )}
-
-        {status?.status === 'qr' && status.qrDataUrl && (
-          <div className="qr-box">
-            <img src={status.qrDataUrl} alt="QR WhatsApp" />
-            <p className="muted">Buka WhatsApp di HP → Perangkat Tertaut → Tautkan Perangkat → scan kode ini.</p>
-          </div>
-        )}
-
-        {connected && (
-          <div style={{ marginTop: 14 }}>
-            <p className="muted">
-              Nomor tersambung: <strong>{status.waPhoneNumber || me?.waPhoneNumber}</strong>
-            </p>
-            <button className="danger" onClick={handleLogout}>
-              Putuskan Koneksi
-            </button>
-          </div>
-        )}
-      </div>
-
-      {safety && safety.level !== 'gray' && (
-        <div className="card clickable-row" onClick={() => setShowSafetyDetail(true)}>
-          <div className="row between wrap">
-            <div>
-              <h3 style={{ margin: 0 }}>Level Keamanan Nomor</h3>
-              <p className="muted" style={{ marginTop: 4, marginBottom: 0 }}>{safety.summary}</p>
-            </div>
-            <span className={`badge ${SAFETY_BADGE[safety.level]}`} style={{ fontSize: 13, padding: '5px 12px' }}>
-              {SAFETY_ICON[safety.level]} {SAFETY_LABEL[safety.level]} · {safety.score}/100
-            </span>
-          </div>
-          <p className="muted" style={{ marginTop: 10, marginBottom: 0 }}>Klik buat lihat rinciannya.</p>
-        </div>
-      )}
+      <SafetyCard />
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Ringkasan Pengiriman</h3>
@@ -428,58 +307,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showSafetyDetail && safety && (
-        <div className="modal-overlay" onClick={() => setShowSafetyDetail(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3>
-              {SAFETY_ICON[safety.level]} Level Keamanan: {SAFETY_LABEL[safety.level]} ({safety.score}/100)
-            </h3>
-            <p className="muted" style={{ marginTop: -6 }}>{safety.summary}</p>
-
-            <div className="modal-field">
-              <div className="modal-label">Ringkasan angka (7 hari terakhir)</div>
-              <div className="modal-value">
-                Umur nomor: {safety.warmupDays} hari · Rata-rata kirim: {safety.avgDailySent7d}/hari · Gagal kirim:{' '}
-                {Math.round(safety.failureRate7d * 1000) / 10}% · Kena batas harian: {safety.capHitDays7d}x
-              </div>
-            </div>
-
-            {safety.factors.map((f) => (
-              <div className="modal-field" key={f.key}>
-                <div className="modal-label">
-                  <span className={`badge ${SAFETY_BADGE[f.level]}`} style={{ marginRight: 6 }}>
-                    {SAFETY_ICON[f.level]}
-                  </span>
-                  {f.label}
-                </div>
-                <div className="modal-value">{f.detail}</div>
-              </div>
-            ))}
-
-            {safety.recommendations.length > 0 && (
-              <div className="modal-field">
-                <div className="modal-label">Saran</div>
-                <div className="modal-value">
-                  {safety.recommendations.map((r, i) => (
-                    <div key={i} style={{ marginBottom: 4 }}>
-                      • {r}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <p className="muted" style={{ fontSize: 12 }}>
-              Catatan: ini perkiraan berdasarkan pola kirim kamu sendiri, bukan data resmi dari WhatsApp — WhatsApp gak
-              pernah publikasikan batas pastinya. Anggap ini panduan, bukan jaminan.
-            </p>
-
-            <button className="secondary" style={{ width: '100%' }} onClick={() => setShowSafetyDetail(false)}>
-              Tutup
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

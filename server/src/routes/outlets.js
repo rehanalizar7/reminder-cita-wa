@@ -107,8 +107,18 @@ router.post('/:id/groups', async (req, res) => {
   const [existing] = await db.select().from(schema.outlet).where(eq(schema.outlet.id, req.params.id));
   if (!existing || existing.reeId !== req.ree.id) return res.status(404).json({ error: 'Outlet tidak ditemukan' });
 
-  const { groupIds } = req.body || {};
-  if (!Array.isArray(groupIds)) return res.status(400).json({ error: 'groupIds harus array' });
+  const { groupIds: rawGroupIds } = req.body || {};
+  if (!Array.isArray(rawGroupIds)) return res.status(400).json({ error: 'groupIds harus array' });
+  const groupIds = [...new Set(rawGroupIds.map(String))];
+
+  // Grup harus milik REE ini sendiri -- jangan sampai outlet nyelip ke grup REE lain.
+  if (groupIds.length) {
+    const owned = await db
+      .select({ id: schema.outletGroup.id })
+      .from(schema.outletGroup)
+      .where(and(eq(schema.outletGroup.reeId, req.ree.id), inArray(schema.outletGroup.id, groupIds)));
+    if (owned.length !== groupIds.length) return res.status(400).json({ error: 'Sebagian grup tidak ditemukan' });
+  }
 
   db.transaction((tx) => {
     tx.delete(schema.outletGroupMember).where(eq(schema.outletGroupMember.outletId, req.params.id)).run();

@@ -45,7 +45,11 @@ const ree = sqliteTable('ree', {
   contactsGoogleEmail: text('contacts_google_email'),
 
   // Auth & akun management
-  role: text('role').notNull().default('ree'), // 'ree' | 'admin'
+  // 'ree'   -> punya 1 TSUB (tsubId), outlet sendiri, kirim dari WA sendiri
+  // 'spv'   -> pegang beberapa TSUB (lihat tabel spv_tsub), mantau REE di TSUB itu
+  //            dan kirim reminder ke outlet milik REE tersebut dari WA SPV sendiri
+  // 'admin' -> akun administrasi murni: gak punya TSUB, gak kirim pesan
+  role: text('role').notNull().default('ree'),
   username: text('username'), // unique (lihat index), nullable buat user Google-only lama
   passwordHash: text('password_hash'),
   mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
@@ -74,6 +78,18 @@ const tsub = sqliteTable('tsub', {
 }, (t) => ([
   uniqueIndex('tsub_code_unique').on(t.code),
   uniqueIndex('tsub_assigned_ree_unique').on(t.assignedReeId),
+]));
+
+// TSUB yang dipegang seorang SPV. Diatur admin. Satu TSUB cuma boleh dipegang
+// SATU SPV (unique tsub_id) -- biar outlet yang sama gak dapet reminder dobel
+// dari dua SPV berbeda. REE di TSUB tersebut = "tim" SPV itu.
+const spvTsub = sqliteTable('spv_tsub', {
+  spvId: text('spv_id').notNull().references(() => ree.id, { onDelete: 'cascade' }),
+  tsubId: text('tsub_id').notNull().references(() => tsub.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+}, (t) => ([
+  primaryKey({ columns: [t.spvId, t.tsubId] }),
+  uniqueIndex('spv_tsub_tsub_unique').on(t.tsubId),
 ]));
 
 // Data resmi retailer per TSUB (diimport dari Excel yang dikasih admin). Ini
@@ -150,7 +166,7 @@ const messageTemplate = sqliteTable('message_template', {
   updatedAt: updatedAt(),
 });
 
-// targetType: 'ALL' | 'GROUP' | 'SELECTED'
+// targetType: 'ALL' | 'GROUP' | 'SELECTED' | 'REE' (khusus SPV: semua outlet satu REE tim)
 // A send job: either "send now" (fired immediately from the API, see services/dispatch)
 // or a schedule the worker polls (cronExpression set, or a future one-off runAt).
 const scheduleJob = sqliteTable('schedule_job', {
@@ -160,6 +176,8 @@ const scheduleJob = sqliteTable('schedule_job', {
 
   targetType: text('target_type').notNull(),
   groupId: text('group_id').references(() => outletGroup.id),
+  // Diisi kalau targetType = 'REE' (SPV kirim ke semua outlet aktif milik satu REE timnya).
+  targetReeId: text('target_ree_id').references(() => ree.id, { onDelete: 'set null' }),
 
   // Scheduling: exactly one of (runAt) or (cronExpression) is expected.
   runAt: integer('run_at', { mode: 'timestamp' }), // one-off, e.g. "send tomorrow 9am"
@@ -220,6 +238,7 @@ const waMessages = sqliteTable('wa_messages', {
 module.exports = {
   ree,
   tsub,
+  spvTsub,
   citaRetailer,
   outletGroup,
   outlet,

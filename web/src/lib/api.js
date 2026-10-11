@@ -239,10 +239,27 @@ export const api = {
   changePassword: (currentPassword, newPassword) =>
     request('/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
 
+  // SPV
+  spvTeam: () => request('/spv/team'),
+  spvMemberHistory: (reeId, params) => request(`/spv/team/${encodeURIComponent(reeId)}/history`, { params }),
+  spvOutlets: (params) => request('/spv/outlets', { params }),
+  spvGroups: () => request('/spv/groups'),
+
+  // Admin
+  adminOverview: () => request('/admin/overview'),
   adminUsers: () => request('/admin/users'),
   adminCreateUser: (body) => request('/admin/users', { method: 'POST', body }),
+  adminUpdateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PATCH', body }),
   adminResetPassword: (id, newPassword) =>
     request(`/admin/users/${id}/reset-password`, { method: 'POST', body: { newPassword } }),
   adminToggleActive: (id, isActive) =>
     request(`/admin/users/${id}/active`, { method: 'PATCH', body: { isActive } }),
+  adminTsubs: () => request('/admin/tsubs'),
+  adminCreateTsub: (code) => request('/admin/tsubs', { method: 'POST', body: { code } }),
+  adminSetTsubRee: (tsubId, reeId) => request(`/admin/tsubs/${tsubId}/ree`, { method: 'PUT', body: { reeId } }),
+  adminSetTsubSpv: (tsubId, spvId) => request(`/admin/tsubs/${tsubId}/spv`, { method: 'PUT', body: { spvId } }),
+  adminTemplates: () => request('/admin/templates'),
+  adminCreateTemplate: (body) => request('/admin/templates', { method: 'POST', body }),
+  adminUpdateTemplate: (id, body) => request(`/admin/templates/${id}`, { method: 'PUT', body }),
+  adminDeleteTemplate: (id) => request(`/admin/templates/${id}`, { method: 'DELETE' }),
 };

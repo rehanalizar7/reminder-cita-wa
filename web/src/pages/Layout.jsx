@@ -1,39 +1,18 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { clearToken, getToken } from '../lib/api';
+import { clearToken } from '../lib/api';
+import { useMe, ROLE_LABEL } from '../lib/me.jsx';
 
-const REE_LINKS = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/contacts', label: 'Import Kontak' },
-  { to: '/outlets', label: 'Outlet' },
-  { to: '/templates', label: 'Template Pesan' },
-  { to: '/send', label: 'Kirim' },
-  { to: '/schedules', label: 'Jadwal' },
-];
-
-// Decode JWT payload client-side (tidak verifikasi signature — hanya buat UI).
-// Signature diverifikasi backend pada setiap request yang memerlukan auth.
-function getTokenRole() {
-  const token = getToken();
-  if (!token) return 'ree';
-  try {
-    return JSON.parse(atob(token.split('.')[1])).role ?? 'ree';
-  } catch {
-    return 'ree';
-  }
-}
-
-export default function Layout() {
-  const role = getTokenRole();
-  const links = role === 'admin'
-    ? [...REE_LINKS, { to: '/admin', label: 'Admin' }]
-    : REE_LINKS;
+// Kerangka halaman (sidebar + konten) yang dipakai semua role. Menu-nya
+// dikirim dari App.jsx sesuai role akun yang lagi login.
+export default function Layout({ links, subtitle }) {
+  const { me } = useMe();
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <h1>Reminder CITA</h1>
-        <div className="subtitle">via WhatsApp</div>
+        <div className="subtitle">{subtitle}</div>
         <nav>
           {links.map((l) => (
             <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -42,6 +21,15 @@ export default function Layout() {
           ))}
         </nav>
         <div className="logout">
+          {me && (
+            <div className="sidebar-account">
+              <div className="sidebar-account-name">{me.name}</div>
+              <div className="sidebar-account-role">
+                {ROLE_LABEL[me.role] || me.role}
+                {me.role === 'ree' && me.tsubCode ? ` · ${me.tsubCode}` : ''}
+              </div>
+            </div>
+          )}
           <button
             className="secondary"
             style={{ width: '100%' }}

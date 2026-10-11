@@ -34,12 +34,14 @@ export default function PilihTsub() {
     api
       .me()
       .then((me) => {
-        if (me.tsubId) navigate('/', { replace: true });
+        // SPV & admin gak milih TSUB sendiri (diatur admin) -- langsung ke dashboard.
+        if (me.tsubId || me.role !== 'ree') navigate('/', { replace: true });
+        else load();
       })
       .catch(() => {
-        /* 401 udah diurus api.js; error lain ditangani load() di bawah */
+        // 401 udah diurus api.js; error lain -- coba muat daftarnya, error-nya tampil di situ.
+        load();
       });
-    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
