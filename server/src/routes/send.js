@@ -4,12 +4,13 @@ const { alias } = require('drizzle-orm/sqlite-core');
 const { db, schema } = require('../db');
 const { requireAuth } = require('../auth/middleware');
 const { dispatch } = require('../services/dispatch');
+const { cancelPending, countPending } = require('../services/cancelPending');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const LOG_STATUSES = ['PENDING', 'SENT', 'FAILED'];
+const LOG_STATUSES = ['PENDING', 'SENT', 'FAILED', 'CANCELLED'];
 
 // POST /send/now
 // body: { templateId, targetType: 'ALL'|'GROUP'|'SELECTED'|'REE', groupId?, outletIds?, targetReeId? }
@@ -60,6 +61,27 @@ router.get('/history', async (req, res) => {
     .limit(Math.min(Math.max(Number(limit) || 100, 1), 500));
 
   res.json(logs);
+});
+
+// GET /send/pending-count -- jumlah pesan akun ini yang masih PENDING (semua
+// tanggal, gak dibatasi 200 baris kayak riwayat di dashboard).
+router.get('/pending-count', (req, res) => {
+  res.json({ count: countPending(req.ree.id) });
+});
+
+// POST /send/cancel-pending
+// body: { ids?: string[] } -- tanpa ids = batalkan SEMUA pesan PENDING akun ini.
+// Cuma bisa batalkan pesan yang dikirim akun ini sendiri.
+router.post('/cancel-pending', (req, res) => {
+  const { ids } = req.body || {};
+  if (ids !== undefined) {
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 1000 || !ids.every((x) => typeof x === 'string' && x)) {
+      return res.status(400).json({ error: 'ids harus berupa daftar id pesan (maks 1000)' });
+    }
+  }
+  const cancelled = cancelPending(req.ree.id, ids || null);
+  logger.info({ reeId: req.ree.id, cancelled, scope: ids ? ids.length : 'ALL' }, 'Pesan pending dibatalkan');
+  res.json({ ok: true, cancelled, remaining: countPending(req.ree.id) });
 });
 
 module.exports = router;

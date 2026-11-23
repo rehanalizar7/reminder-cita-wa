@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { AccountStatsTable, AccountStatsDetail } from '../../components/AccountStats.jsx';
 
-const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red' };
+const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red', CANCELLED: 'gray' };
 
 // Popup detail satu REE tim: statistik + riwayat kirim terbaru REE tersebut.
 export function MemberModal({ member, onClose }) {
@@ -36,6 +36,7 @@ export function MemberModal({ member, onClose }) {
               ['SENT', 'Terkirim'],
               ['FAILED', 'Gagal'],
               ['PENDING', 'Menunggu'],
+              ['CANCELLED', 'Dibatalkan'],
             ].map(([value, label]) => (
               <button key={value || 'all'} className={status === value ? 'active' : ''} onClick={() => setStatus(value)}>
                 {label}

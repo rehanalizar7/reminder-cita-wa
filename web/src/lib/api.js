@@ -159,6 +159,8 @@ export const api = {
 
   sendNow: (body) => request('/send/now', { method: 'POST', body }),
   sendHistory: (params) => request('/send/history', { params }),
+  pendingCount: () => request('/send/pending-count'),
+  cancelPending: (ids) => request('/send/cancel-pending', { method: 'POST', body: ids ? { ids } : {} }),
 
   schedules: () => request('/schedules'),
   createSchedule: (body) => request('/schedules', { method: 'POST', body }),

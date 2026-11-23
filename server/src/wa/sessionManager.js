@@ -275,6 +275,11 @@ async function processQueue(reeId) {
     s.dailyCapReached = false;
 
     const job = s.queue.shift();
+
+    // Pesan yang udah dibatalkan (status bukan PENDING lagi) dilewati tanpa
+    // jeda -- jaga-jaga kalau pembatalan kejadian pas job ini lagi nunggu giliran.
+    if (job.logId && !(await isStillPending(job.logId))) continue;
+
     try {
       const jid = toWhatsAppJid(job.phone);
       const sent = await s.sock.sendMessage(jid, { text: job.text });
@@ -292,6 +297,37 @@ async function processQueue(reeId) {
   }
 
   s.processing = false;
+}
+
+async function isStillPending(logId) {
+  try {
+    const [row] = await db
+      .select({ status: schema.messageLog.status })
+      .from(schema.messageLog)
+      .where(eq(schema.messageLog.id, logId));
+    return row?.status === 'PENDING';
+  } catch (err) {
+    // Kalau cek DB-nya gagal, tetap kirim -- perilaku lama sebelum fitur batal.
+    logger.warn({ err, logId }, 'Gagal cek status pesan sebelum kirim');
+    return true;
+  }
+}
+
+// Buang pesan dari antrian kirim (in-memory) milik satu akun. logIds = null
+// berarti buang semua. Pesan yang LAGI dikirim (udah keluar dari antrian) gak
+// bisa ditarik -- hasil akhirnya tetap dicatat SENT/FAILED sesuai kenyataan.
+function removeQueued(reeId, logIds = null) {
+  const s = sessions.get(reeId);
+  if (!s || s.queue.length === 0) return 0;
+  const before = s.queue.length;
+  if (logIds === null) {
+    s.queue = [];
+  } else {
+    const drop = new Set(logIds);
+    s.queue = s.queue.filter((job) => !drop.has(job.logId));
+  }
+  if (s.queue.length === 0) s.dailyCapReached = false;
+  return before - s.queue.length;
 }
 
 function queueLength(reeId) {
@@ -331,6 +367,7 @@ module.exports = {
   getStatus,
   logoutSession,
   enqueueSend,
+  removeQueued,
   queueLength,
   startQueueResumer,
   pruneOldWaMessages,

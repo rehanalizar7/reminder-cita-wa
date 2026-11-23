@@ -5,6 +5,7 @@ import { useMe } from '../../lib/me.jsx';
 import { WaStatusCard, SafetyCard } from '../../components/WaPanel.jsx';
 import { attentionReasons } from '../../components/AccountStats.jsx';
 import { MemberModal } from './SpvTeam.jsx';
+import { CancelPendingBar } from '../../components/PendingQueue.jsx';
 
 function isToday(iso) {
   return new Date(iso).toDateString() === new Date().toDateString();
@@ -66,6 +67,8 @@ export default function SpvDashboard() {
       <WaStatusCard description="Hubungkan nomor WhatsApp kamu sendiri. Reminder dari SPV ke outlet tim dikirim lewat nomor ini, dan dihitung ke batas kirim harian nomor ini." />
 
       <SafetyCard />
+
+      <CancelPendingBar />
 
       <div className="card">
         <div className="row between wrap" style={{ marginBottom: 12 }}>

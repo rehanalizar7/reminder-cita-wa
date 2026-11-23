@@ -6,7 +6,7 @@ const { getSpvTsubs, getTeamMembers, accountStats } = require('../services/team'
 const router = express.Router();
 router.use(requireAuth, requireRole('spv'));
 
-const LOG_STATUSES = ['PENDING', 'SENT', 'FAILED'];
+const LOG_STATUSES = ['PENDING', 'SENT', 'FAILED', 'CANCELLED'];
 
 function ph(n) {
   return new Array(n).fill('?').join(',');

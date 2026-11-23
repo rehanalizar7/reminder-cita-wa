@@ -71,6 +71,7 @@ async function dispatch({ ree: sender, templateId, targetType, groupId, outletId
 
   for (const log of logs) {
     enqueueSend(sender.id, {
+      logId: log.id,
       phone: log.phone,
       text: log.message,
       onSuccess: () =>

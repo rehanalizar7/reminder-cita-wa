@@ -199,7 +199,7 @@ const scheduleJobOutlet = sqliteTable('schedule_job_outlet', {
   primaryKey({ columns: [t.scheduleJobId, t.outletId] }),
 ]));
 
-// status: 'PENDING' | 'SENT' | 'FAILED'
+// status: 'PENDING' | 'SENT' | 'FAILED' | 'CANCELLED' (dibatalkan akun pengirim sebelum terkirim)
 // One row per actual message sent (or attempted) — the audit trail / history
 // the dashboard shows.
 const messageLog = sqliteTable('message_log', {

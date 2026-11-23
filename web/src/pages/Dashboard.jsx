@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useMe } from '../lib/me.jsx';
 import { WaStatusCard, SafetyCard } from '../components/WaPanel.jsx';
-
-const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red' };
+import { STATUS_BADGE, CancelPendingBar, CancelOneButton } from '../components/PendingQueue.jsx';
 
 function isToday(date) {
   const now = new Date();
@@ -49,6 +48,7 @@ export default function Dashboard() {
   const [activityDateFilter, setActivityDateFilter] = useState('ALL');
   const [activityLimit, setActivityLimit] = useState(8);
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [pendingKey, setPendingKey] = useState(0);
 
   async function loadStats() {
     try {
@@ -63,6 +63,7 @@ export default function Dashboard() {
       setGroups(g);
       setHistory(h);
       setSchedules(s);
+      setPendingKey((k) => k + 1);
     } catch (err) {
       setError(err.message);
     }
@@ -118,6 +119,7 @@ export default function Dashboard() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Ringkasan Pengiriman</h3>
+        <CancelPendingBar reloadKey={pendingKey} onDone={loadStats} />
         <p className="muted" style={{ marginTop: -8 }}>Hari ini</p>
         <div className="stat-grid" style={{ marginBottom: 16 }}>
           <div className="stat-tile stat-ok">
@@ -224,6 +226,7 @@ export default function Dashboard() {
             ['SENT', 'Terkirim'],
             ['FAILED', 'Gagal'],
             ['PENDING', 'Menunggu'],
+            ['CANCELLED', 'Dibatalkan'],
           ].map(([value, label]) => (
             <button key={value} className={activityFilter === value ? 'active' : ''} onClick={() => setActivityFilter(value)}>
               {label} ({value === 'ALL' ? dateFilteredActivity.length : dateFilteredActivity.filter((h) => h.status === value).length})
@@ -300,6 +303,13 @@ export default function Dashboard() {
               <div className="modal-value">{selectedActivity.message}</div>
             </div>
 
+            <CancelOneButton
+              log={selectedActivity}
+              onDone={(updated) => {
+                setSelectedActivity(updated);
+                loadStats();
+              }}
+            />
             <button className="secondary" style={{ width: '100%' }} onClick={() => setSelectedActivity(null)}>
               Tutup
             </button>

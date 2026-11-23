@@ -3,8 +3,7 @@ import { api } from '../lib/api';
 import { useToast } from '../lib/toast.jsx';
 import { useMe } from '../lib/me.jsx';
 import { loadTargetData, targetSummary, groupOptionLabel, outletOptionLabel } from '../lib/targets.jsx';
-
-const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red' };
+import { STATUS_BADGE, CancelOneButton } from '../components/PendingQueue.jsx';
 
 export default function Send() {
   const showToast = useToast();
@@ -292,6 +291,17 @@ export default function Send() {
               <div className="modal-value">{selectedLog.message}</div>
             </div>
 
+            <CancelOneButton
+              log={selectedLog}
+              onDone={async (updated) => {
+                setSelectedLog(updated);
+                try {
+                  setHistory(await api.sendHistory({ limit: 30 }));
+                } catch {
+                  /* riwayat gagal dimuat ulang -- gak fatal */
+                }
+              }}
+            />
             <button className="secondary" style={{ width: '100%' }} onClick={() => setSelectedLog(null)}>
               Tutup
             </button>
