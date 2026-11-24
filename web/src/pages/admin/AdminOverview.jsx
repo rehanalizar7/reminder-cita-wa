@@ -53,7 +53,7 @@ export default function AdminOverview() {
 
       {data && (
         <>
-          <div className="card">
+          <div className="card nota">
             <h3 style={{ marginTop: 0 }}>Akun</h3>
             <div className="stat-grid">
               <div className="stat-tile">

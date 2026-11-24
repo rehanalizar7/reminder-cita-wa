@@ -5,7 +5,8 @@ import { useMe } from '../lib/me.jsx';
 
 export const SAFETY_BADGE = { green: 'green', yellow: 'yellow', red: 'red', gray: 'gray' };
 export const SAFETY_LABEL = { green: 'Aman', yellow: 'Waspada', red: 'Berisiko', gray: 'Belum ada data' };
-export const SAFETY_ICON = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' };
+// Dulu emoji bulat warna; sekarang warnanya cukup dari cap (badge), jadi dikosongkan.
+export const SAFETY_ICON = { green: '', yellow: '', red: '', gray: '' };
 
 // Kartu status WhatsApp milik akun yang login (REE atau SPV): hubungkan lewat
 // QR, lihat antrian, putuskan koneksi. Dipakai Dashboard REE & Dashboard SPV.
@@ -142,7 +143,7 @@ export function SafetyDetail({ safety, subject = 'kamu sendiri' }) {
         <div className="modal-field" key={f.key}>
           <div className="modal-label">
             <span className={`badge ${SAFETY_BADGE[f.level]}`} style={{ marginRight: 6 }}>
-              {SAFETY_ICON[f.level]}
+              {SAFETY_LABEL[f.level]}
             </span>
             {f.label}
           </div>
@@ -196,7 +197,7 @@ export function SafetyCard() {
             <p className="muted" style={{ marginTop: 4, marginBottom: 0 }}>{safety.summary}</p>
           </div>
           <span className={`badge ${SAFETY_BADGE[safety.level]}`} style={{ fontSize: 13, padding: '5px 12px' }}>
-            {SAFETY_ICON[safety.level]} {SAFETY_LABEL[safety.level]} · {safety.score}/100
+            {SAFETY_LABEL[safety.level]}, {safety.score}/100
           </span>
         </div>
         <p className="muted" style={{ marginTop: 10, marginBottom: 0 }}>Klik buat lihat rinciannya.</p>
@@ -206,7 +207,7 @@ export function SafetyCard() {
         <div className="modal-overlay" onClick={() => setOpen(false)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <h3>
-              {SAFETY_ICON[safety.level]} Level Keamanan: {SAFETY_LABEL[safety.level]} ({safety.score}/100)
+              Level Keamanan: {SAFETY_LABEL[safety.level]} ({safety.score}/100)
             </h3>
             <SafetyDetail safety={safety} />
             <button className="secondary" style={{ width: '100%' }} onClick={() => setOpen(false)}>

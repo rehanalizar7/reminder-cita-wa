@@ -4,6 +4,8 @@ import { useToast } from '../lib/toast.jsx';
 
 // Warna badge status pesan -- dipakai bareng di Dashboard, Kirim, SPV.
 export const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red', CANCELLED: 'gray' };
+// Label status buat ditampilkan ke orang (kode aslinya tetap SENT/FAILED/dst di data).
+export const STATUS_LABEL = { PENDING: 'Menunggu', SENT: 'Terkirim', FAILED: 'Gagal', CANCELLED: 'Dibatalkan' };
 
 // Kotak peringatan + tombol "Batalkan semua" buat pesan yang masih menunggu.
 // Cuma muncul kalau ada pesan PENDING. Jumlahnya diambil dari server (semua

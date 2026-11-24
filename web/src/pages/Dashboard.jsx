@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useMe } from '../lib/me.jsx';
 import { WaStatusCard, SafetyCard } from '../components/WaPanel.jsx';
-import { STATUS_BADGE, CancelPendingBar, CancelOneButton } from '../components/PendingQueue.jsx';
+import { STATUS_BADGE, STATUS_LABEL, CancelPendingBar, CancelOneButton } from '../components/PendingQueue.jsx';
 import { describeCron } from '../lib/cronText.js';
 
 function isToday(date) {
@@ -118,7 +118,7 @@ export default function Dashboard() {
 
       <SafetyCard />
 
-      <div className="card">
+      <div className="card nota">
         <h3 style={{ marginTop: 0 }}>Ringkasan Pengiriman</h3>
         <CancelPendingBar reloadKey={pendingKey} onDone={loadStats} />
         <p className="muted" style={{ marginTop: -8 }}>Hari ini</p>
@@ -240,7 +240,7 @@ export default function Dashboard() {
           <div key={h.id} className="list-row clickable-row" onClick={() => setSelectedActivity(h)}>
             <span>{h.outletName}</span>
             <span className="row" style={{ gap: 8 }}>
-              <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{h.status}</span>
+              <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{STATUS_LABEL[h.status] || h.status}</span>
               <span className="muted">{timeAgo(h.createdAt)}</span>
             </span>
           </div>
@@ -283,7 +283,7 @@ export default function Dashboard() {
             <div className="modal-field">
               <div className="modal-label">Status</div>
               <div className="modal-value">
-                <span className={`badge ${STATUS_BADGE[selectedActivity.status] || 'gray'}`}>{selectedActivity.status}</span>
+                <span className={`badge ${STATUS_BADGE[selectedActivity.status] || 'gray'}`}>{STATUS_LABEL[selectedActivity.status] || selectedActivity.status}</span>
               </div>
             </div>
 

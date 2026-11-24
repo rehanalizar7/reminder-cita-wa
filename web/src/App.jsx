@@ -69,7 +69,7 @@ function RequireSetup({ children }) {
                 window.location.href = '/login';
               }}
             >
-              Logout
+              Keluar
             </button>
           </div>
         </div>
@@ -84,28 +84,28 @@ function RequireSetup({ children }) {
 }
 
 const ADMIN_LINKS = [
-  { to: '/', label: 'Ringkasan', end: true },
-  { to: '/akun', label: 'Akun' },
-  { to: '/tsub', label: 'TSUB' },
-  { to: '/template-bersama', label: 'Template Bersama' },
+  { to: '/', label: 'Ringkasan', short: 'Ringkasan', icon: 'home', end: true },
+  { to: '/akun', label: 'Akun', icon: 'account' },
+  { to: '/tsub', label: 'TSUB', icon: 'tsub' },
+  { to: '/template-bersama', label: 'Template Bersama', short: 'Template', icon: 'template' },
 ];
 
 const SPV_LINKS = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/tim', label: 'Tim REE' },
-  { to: '/outlet-tim', label: 'Outlet Tim' },
-  { to: '/templates', label: 'Template Pesan' },
-  { to: '/send', label: 'Kirim' },
-  { to: '/schedules', label: 'Jadwal' },
+  { to: '/', label: 'Dashboard', short: 'Beranda', icon: 'home', end: true },
+  { to: '/tim', label: 'Tim REE', short: 'Tim', icon: 'team' },
+  { to: '/outlet-tim', label: 'Outlet Tim', short: 'Outlet', icon: 'outlet' },
+  { to: '/templates', label: 'Template Pesan', short: 'Template', icon: 'template' },
+  { to: '/send', label: 'Kirim', icon: 'send' },
+  { to: '/schedules', label: 'Jadwal', icon: 'schedule' },
 ];
 
 const REE_LINKS = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/contacts', label: 'Import Kontak' },
-  { to: '/outlets', label: 'Outlet' },
-  { to: '/templates', label: 'Template Pesan' },
-  { to: '/send', label: 'Kirim' },
-  { to: '/schedules', label: 'Jadwal' },
+  { to: '/', label: 'Dashboard', short: 'Beranda', icon: 'home', end: true },
+  { to: '/contacts', label: 'Import Kontak', short: 'Kontak', icon: 'contacts' },
+  { to: '/outlets', label: 'Outlet', icon: 'outlet' },
+  { to: '/templates', label: 'Template Pesan', short: 'Template', icon: 'template' },
+  { to: '/send', label: 'Kirim', icon: 'send' },
+  { to: '/schedules', label: 'Jadwal', icon: 'schedule' },
 ];
 
 function RoleRoutes() {

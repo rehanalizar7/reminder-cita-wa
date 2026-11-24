@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { AccountStatsTable, AccountStatsDetail } from '../../components/AccountStats.jsx';
 
-const STATUS_BADGE = { PENDING: 'yellow', SENT: 'green', FAILED: 'red', CANCELLED: 'gray' };
+import { STATUS_BADGE, STATUS_LABEL } from '../../components/PendingQueue.jsx';
 
 // Popup detail satu REE tim: statistik + riwayat kirim terbaru REE tersebut.
 export function MemberModal({ member, onClose }) {
@@ -59,7 +59,7 @@ export function MemberModal({ member, onClose }) {
                   )}
                 </div>
                 <span className="row" style={{ gap: 6, flexShrink: 0 }}>
-                  <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{h.status}</span>
+                  <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{STATUS_LABEL[h.status] || h.status}</span>
                   <span className="muted nowrap">{new Date(h.createdAt).toLocaleString('id-ID')}</span>
                 </span>
               </div>

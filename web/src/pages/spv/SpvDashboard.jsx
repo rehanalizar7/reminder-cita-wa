@@ -42,7 +42,7 @@ export default function SpvDashboard() {
       <h2>Dashboard SPV</h2>
       {error && <div className="error-box">{error}</div>}
 
-      <div className="card">
+      <div className="card nota">
         <div className="row between wrap">
           <div>
             <div className="muted">Login sebagai</div>

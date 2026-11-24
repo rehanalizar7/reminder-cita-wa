@@ -295,7 +295,7 @@ export default function Outlets() {
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="row wrap" style={{ marginBottom: 14, padding: 10, background: '#f1f2f4', borderRadius: 8 }}>
+          <div className="row wrap" style={{ marginBottom: 14, padding: 10, background: 'var(--primary-soft)', borderRadius: 'var(--radius)' }}>
             <span style={{ fontWeight: 600 }}>{selectedIds.size} outlet dipilih</span>
             <select value={bulkGroupId} onChange={(e) => setBulkGroupId(e.target.value)} style={{ width: 200 }}>
               <option value="">-- pilih grup --</option>

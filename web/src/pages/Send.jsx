@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useToast } from '../lib/toast.jsx';
 import { useMe } from '../lib/me.jsx';
 import { loadTargetData, targetSummary, groupOptionLabel, outletOptionLabel } from '../lib/targets.jsx';
-import { STATUS_BADGE, CancelOneButton } from '../components/PendingQueue.jsx';
+import { STATUS_BADGE, STATUS_LABEL, CancelOneButton } from '../components/PendingQueue.jsx';
 
 export default function Send() {
   const showToast = useToast();
@@ -115,7 +115,7 @@ export default function Send() {
         <div className="warn-box">Belum ada REE di tim kamu. Minta admin atur TSUB yang kamu pegang.</div>
       )}
 
-      <div className="card">
+      <div className="card nota">
         <div className="field">
           <label>Template</label>
           <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
@@ -228,7 +228,7 @@ export default function Send() {
                   {h.message}
                 </td>
                 <td>
-                  <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{h.status}</span>
+                  <span className={`badge ${STATUS_BADGE[h.status] || 'gray'}`}>{STATUS_LABEL[h.status] || h.status}</span>
                   {h.error && <div className="muted">{h.error}</div>}
                 </td>
                 <td className="muted">{new Date(h.createdAt).toLocaleString('id-ID')}</td>
@@ -270,7 +270,7 @@ export default function Send() {
             <div className="modal-field">
               <div className="modal-label">Status</div>
               <div className="modal-value">
-                <span className={`badge ${STATUS_BADGE[selectedLog.status] || 'gray'}`}>{selectedLog.status}</span>
+                <span className={`badge ${STATUS_BADGE[selectedLog.status] || 'gray'}`}>{STATUS_LABEL[selectedLog.status] || selectedLog.status}</span>
               </div>
             </div>
 

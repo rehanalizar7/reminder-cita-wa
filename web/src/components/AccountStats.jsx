@@ -1,5 +1,5 @@
 import React from 'react';
-import { SAFETY_BADGE, SAFETY_ICON, SAFETY_LABEL } from './WaPanel.jsx';
+import { SAFETY_BADGE, SAFETY_LABEL } from './WaPanel.jsx';
 import { ROLE_LABEL } from '../lib/me.jsx';
 
 export function timeAgo(iso) {
@@ -29,7 +29,7 @@ export function SafetyBadge({ safety }) {
   if (!safety || safety.level === 'gray' || safety.score === null) return <span className="badge gray">—</span>;
   return (
     <span className={`badge ${SAFETY_BADGE[safety.level]}`} title={safety.summary}>
-      {SAFETY_ICON[safety.level]} {safety.score}
+      {safety.score}
     </span>
   );
 }
@@ -147,7 +147,7 @@ export function AccountStatsDetail({ a, children }) {
           {a.safety && a.safety.level !== 'gray' ? (
             <>
               <span className={`badge ${SAFETY_BADGE[a.safety.level]}`}>
-                {SAFETY_ICON[a.safety.level]} {SAFETY_LABEL[a.safety.level]} · {a.safety.score}/100
+                {SAFETY_LABEL[a.safety.level]}, {a.safety.score}/100
               </span>{' '}
               <span className="muted">{a.safety.summary}</span>
             </>
