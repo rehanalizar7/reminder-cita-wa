@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useMe } from '../lib/me.jsx';
 import { WaStatusCard, SafetyCard } from '../components/WaPanel.jsx';
 import { STATUS_BADGE, CancelPendingBar, CancelOneButton } from '../components/PendingQueue.jsx';
+import { describeCron } from '../lib/cronText.js';
 
 function isToday(date) {
   const now = new Date();
@@ -80,8 +81,8 @@ export default function Dashboard() {
   const upcomingSchedules = schedules
     .filter((s) => s.isActive)
     .sort((a, b) => {
-      const at = a.isRecurring ? -Infinity : new Date(a.runAt).getTime();
-      const bt = b.isRecurring ? -Infinity : new Date(b.runAt).getTime();
+      const at = a.nextRunAt ? new Date(a.nextRunAt).getTime() : Infinity;
+      const bt = b.nextRunAt ? new Date(b.nextRunAt).getTime() : Infinity;
       return at - bt;
     })
     .slice(0, 5);
@@ -194,7 +195,7 @@ export default function Dashboard() {
               <span className="muted"> · {s.targetType === 'ALL' ? 'Semua outlet' : s.targetType === 'GROUP' ? s.groupName : 'Outlet terpilih'}</span>
             </span>
             <span className="muted">
-              {s.isRecurring ? `Berulang: ${s.cronExpression}` : new Date(s.runAt).toLocaleString('id-ID')}
+              {s.isRecurring ? describeCron(s.cronExpression) : new Date(s.runAt).toLocaleString('id-ID')}
             </span>
           </div>
         ))}

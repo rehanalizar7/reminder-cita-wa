@@ -3,16 +3,23 @@ import { api } from '../lib/api';
 import { useToast } from '../lib/toast.jsx';
 import { useMe } from '../lib/me.jsx';
 import { loadTargetData, groupOptionLabel, outletOptionLabel, targetLabel } from '../lib/targets.jsx';
+import { DAY_NAMES, DAY_ORDER, buildCron, describeSchedule, describeCron, isOddHour } from '../lib/cronText.js';
 
-const DAYS = [
-  { value: 1, label: 'Sen' },
-  { value: 2, label: 'Sel' },
-  { value: 3, label: 'Rab' },
-  { value: 4, label: 'Kam' },
-  { value: 5, label: 'Jum' },
-  { value: 6, label: 'Sab' },
-  { value: 0, label: 'Min' },
+const FREQS = [
+  ['daily', 'Tiap hari'],
+  ['weekly', 'Hari tertentu tiap minggu'],
+  ['monthly', 'Tanggal tertentu tiap bulan'],
 ];
+// Tanggal 29-31 gak dikasih, biar gak ada bulan yang kelewat (Februari dll).
+const DATES = Array.from({ length: 28 }, (_, i) => i + 1);
+
+function formatWhen(d) {
+  return new Date(d).toLocaleString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function whenLabel(s) {
+  return s.isRecurring ? describeCron(s.cronExpression) : new Date(s.runAt).toLocaleString('id-ID');
+}
 
 export default function Schedules() {
   const showToast = useToast();
@@ -33,8 +40,9 @@ export default function Schedules() {
   const [mode, setMode] = useState('once'); // 'once' | 'recurring'
   const [runAt, setRunAt] = useState('');
   const [time, setTime] = useState('09:00');
+  const [freq, setFreq] = useState('weekly');
   const [days, setDays] = useState(new Set([1])); // default Senin
-  const [rawCron, setRawCron] = useState('');
+  const [dates, setDates] = useState(new Set([1]));
 
   // formError: validasi form sebelum submit, ditampilkan inline di atas tombol.
   // Semua feedback aksi lain (sukses/gagal) pakai toast agar tidak ada duplikat.
@@ -69,12 +77,17 @@ export default function Schedules() {
     });
   }
 
-  function buildCron() {
-    if (rawCron.trim()) return rawCron.trim();
-    const [hh, mm] = time.split(':');
-    const dayList = [...days].sort().join(',') || '*';
-    return `${Number(mm)} ${Number(hh)} * * ${dayList}`;
+  function toggleDate(d) {
+    setDates((prev) => {
+      const next = new Set(prev);
+      next.has(d) ? next.delete(d) : next.add(d);
+      return next;
+    });
   }
+
+  const recurring = { freq, time, days: [...days], dates: [...dates] };
+  const recurringReady =
+    Boolean(time) && (freq === 'daily' || (freq === 'weekly' && days.size > 0) || (freq === 'monthly' && dates.size > 0));
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -84,6 +97,10 @@ export default function Schedules() {
     if (targetType === 'REE' && !targetReeId) return setFormError('Pilih REE dulu.');
     if (targetType === 'SELECTED' && selectedOutlets.size === 0) return setFormError('Pilih minimal satu outlet.');
     if (mode === 'once' && !runAt) return setFormError('Tentukan tanggal & jam kirim.');
+    if (mode === 'once' && new Date(runAt) <= new Date()) return setFormError('Tanggal & jam kirim udah lewat.');
+    if (mode === 'recurring' && !time) return setFormError('Tentukan jam kirim.');
+    if (mode === 'recurring' && freq === 'weekly' && days.size === 0) return setFormError('Pilih minimal satu hari.');
+    if (mode === 'recurring' && freq === 'monthly' && dates.size === 0) return setFormError('Pilih minimal satu tanggal.');
 
     setSaving(true);
     try {
@@ -96,7 +113,7 @@ export default function Schedules() {
         body.runAt = new Date(runAt).toISOString();
       } else {
         body.isRecurring = true;
-        body.cronExpression = buildCron();
+        body.cronExpression = buildCron(recurring);
       }
 
       await api.createSchedule(body);
@@ -248,24 +265,53 @@ export default function Schedules() {
             </div>
           ) : (
             <div className="field">
-              <div className="row wrap" style={{ marginBottom: 8 }}>
-                {DAYS.map((d) => (
-                  <label key={d.value} className="checkbox-row">
-                    <input type="checkbox" checked={days.has(d.value)} onChange={() => toggleDay(d.value)} />
-                    {d.label}
-                  </label>
+              <label>Seberapa sering</label>
+              <select value={freq} onChange={(e) => setFreq(e.target.value)} style={{ marginBottom: 10 }}>
+                {FREQS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
                 ))}
-              </div>
-              <div className="row wrap">
-                <div style={{ maxWidth: 140 }}>
-                  <label>Jam</label>
-                  <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </select>
+
+              {freq === 'weekly' && (
+                <div className="row wrap" style={{ marginBottom: 10 }}>
+                  {DAY_ORDER.map((d) => (
+                    <label key={d} className="checkbox-row">
+                      <input type="checkbox" checked={days.has(d)} onChange={() => toggleDay(d)} />
+                      {DAY_NAMES[d]}
+                    </label>
+                  ))}
                 </div>
+              )}
+
+              {freq === 'monthly' && (
+                <div className="row wrap" style={{ marginBottom: 10, gap: 6 }}>
+                  {DATES.map((d) => (
+                    <label key={d} className="checkbox-row" style={{ minWidth: 44 }}>
+                      <input type="checkbox" checked={dates.has(d)} onChange={() => toggleDate(d)} />
+                      {d}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ maxWidth: 140 }}>
+                <label>Jam (WIB)</label>
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
               </div>
-              <p className="muted" style={{ marginTop: 8 }}>
-                Cron otomatis: <code>{buildCron()}</code> (opsional, timpa manual kalau perlu)
-              </p>
-              <input placeholder="Cron lanjutan (opsional), mis. 0 9 1 * *" value={rawCron} onChange={(e) => setRawCron(e.target.value)} />
+
+              {recurringReady && (
+                <div className="info-box" style={{ marginTop: 10, marginBottom: 0 }}>
+                  Pesan bakal dikirim: <strong>{describeSchedule(recurring)}</strong>
+                </div>
+              )}
+              {time && isOddHour(time) && (
+                <div className="warn-box" style={{ marginTop: 8, marginBottom: 0 }}>
+                  Jam {time} itu {Number(time.split(':')[0]) < 6 ? 'subuh' : 'malam'}, di luar jam buka toko pada umumnya.
+                  Pastikan jamnya udah bener. Kalau maksudnya sore, pilih jam 16:00 (04:00 PM).
+                </div>
+              )}
             </div>
           )}
 
@@ -295,13 +341,8 @@ export default function Schedules() {
                 <td>{s.templateName}</td>
                 <td className="muted col-hide-mobile">{targetLabel(s, isSpv)}</td>
                 <td className="muted col-hide-mobile">
-                  {s.isRecurring ? (
-                    <>
-                      Berulang <code>{s.cronExpression}</code>
-                    </>
-                  ) : (
-                    new Date(s.runAt).toLocaleString('id-ID')
-                  )}
+                  {whenLabel(s)}
+                  {s.nextRunAt && <div>Berikutnya: {formatWhen(s.nextRunAt)}</div>}
                 </td>
                 <td>
                   <span className={`badge ${s.isActive ? 'green' : 'gray'}`}>{s.isActive ? 'Aktif' : 'Nonaktif'}</span>
@@ -346,13 +387,16 @@ export default function Schedules() {
             <div className="modal-field">
               <div className="modal-label">Waktu</div>
               <div className="modal-value">
-                {detailSchedule.isRecurring ? (
-                  <>Berulang: {detailSchedule.cronExpression}</>
-                ) : (
-                  new Date(detailSchedule.runAt).toLocaleString('id-ID')
-                )}
+                {whenLabel(detailSchedule)}
               </div>
             </div>
+
+            {detailSchedule.nextRunAt && (
+              <div className="modal-field">
+                <div className="modal-label">Kirim berikutnya</div>
+                <div className="modal-value">{formatWhen(detailSchedule.nextRunAt)}</div>
+              </div>
+            )}
 
             <div className="modal-field">
               <div className="modal-label">Status</div>

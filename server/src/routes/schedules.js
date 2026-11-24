@@ -36,8 +36,20 @@ router.get('/', async (req, res) => {
     .leftJoin(targetRee, eq(targetRee.id, schema.scheduleJob.targetReeId))
     .where(eq(schema.scheduleJob.reeId, req.ree.id))
     .orderBy(desc(schema.scheduleJob.createdAt));
-  res.json(jobs);
+  res.json(jobs.map((j) => ({ ...j, nextRunAt: nextRunAt(j) })));
 });
+
+// Kapan jadwal ini jalan berikutnya (buat ditampilin di dashboard), atau null
+// kalau nonaktif / jadwal sekali yang udah lewat.
+function nextRunAt(job) {
+  if (!job.isActive) return null;
+  if (!job.isRecurring) return job.runAt && !job.lastRunAt ? job.runAt : null;
+  try {
+    return cronParser.parseExpression(job.cronExpression, { tz: 'Asia/Jakarta' }).next().toDate();
+  } catch {
+    return null;
+  }
+}
 
 // POST /schedules
 // One-off: { templateId, targetType, groupId?, outletIds?, targetReeId?, runAt: ISOString }
